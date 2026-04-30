@@ -164,6 +164,24 @@ vcse pack validate <pack_id>
 vcse pack review <pack_id>
 ```
 
+## Automatic Ingestion (v5.3)
+
+`vcse ingest` can now infer schema and propose deterministic mappings for raw
+JSON/JSONL/CSV datasets. No fuzzy matching is used; mapping is rule-based and
+reproducible. Generated mappings are saved to:
+
+`.vcse/mappings/<dataset_hash>.json`
+
+Example:
+
+```bash
+vcse ingest datasets/raw/countries.json --auto-approve
+```
+
+If `--auto-approve` is omitted and a raw schema needs mapping, VCSE writes the
+mapping artifact and exits that file with an approval-required error so you can
+inspect and reuse the mapping.
+
 ## DSL
 
 VCSE includes a deterministic Rule/Template DSL for loading capabilities without
