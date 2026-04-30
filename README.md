@@ -56,7 +56,7 @@ vcse demo logic
 vcse demo arithmetic
 vcse demo contradiction
 vcse demo logic --search mcts
-vcse ingest examples/ingestion/simple_policy.txt --auto --dry-run
+vcse ingest examples/ingestion/triples --json
 vcse run examples/file.json
 vcse benchmark benchmarks/simple_logic_cases.jsonl
 vcse benchmark benchmarks/mixed_cases.jsonl --json
@@ -123,16 +123,13 @@ vcse benchmark benchmarks/mixed_cases.jsonl --json
 
 ## Ingestion
 
-VCSE can import candidate knowledge from local JSON/JSONL/CSV/TXT (and YAML when
-available) through deterministic adapters and template extraction.
-
-Ingestion is not blind trust: imported facts are validated, applied on cloned
-memory, and checked by verifiers before acceptance.
+VCSE can deterministically import candidate knowledge packs from local
+JSON/JSONL/CSV datasets. Ingest surfaces conflicts and entity metrics, writes
+candidate packs, and never auto-certifies or merges.
 
 ```bash
-vcse ingest examples/ingestion/simple_policy.txt --auto --dry-run
-vcse ingest examples/ingestion/simple_policy.txt --auto --output-memory /tmp/vcse_memory.json
-vcse ingest examples/ingestion/simple_policy.txt --auto --export-pack /tmp/vcse_pack
+vcse ingest path/to/dataset --json
+vcse ingest path/to/dataset
 ```
 
 See [docs/INGESTION.md](docs/INGESTION.md) and
@@ -149,7 +146,7 @@ changing Python core modules. DSL bundles are explicit and command-scoped.
 vcse dsl validate examples/dsl/basic_logic.json
 vcse dsl compile examples/dsl/basic_logic.json
 vcse ask "All men are mortal. Socrates is a man. Can Socrates die?" --dsl examples/dsl/basic_logic.json
-vcse ingest examples/ingestion/simple_policy.txt --dsl examples/dsl/simple_policy.json --auto --dry-run
+vcse ingest path/to/dataset --json
 ```
 
 See [docs/DSL.md](docs/DSL.md).
