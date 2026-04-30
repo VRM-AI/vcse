@@ -717,8 +717,8 @@ def run_reasonops_report(path: Path) -> str:
     return generate_report(path)
 
 
-def run_ingest(path: Path, json_output: bool = False) -> str:
-    result = run_autonomous_ingest(path=path)
+def run_ingest(path: Path, json_output: bool = False, auto_approve: bool = False) -> str:
+    result = run_autonomous_ingest(path=path, auto_approve=auto_approve)
     payload = result.to_dict()
     if json_output:
         return json.dumps(payload, sort_keys=True)
@@ -737,6 +737,26 @@ def run_ingest(path: Path, json_output: bool = False) -> str:
         lines.append("errors:")
         for item in result.errors:
             lines.append(f"  - {item}")
+    inferred = [item for item in result.file_results if item.mapping_path]
+    if inferred:
+        lines.append("schema_inference:")
+        for item in inferred:
+            lines.append(f"  source: {item.source_file}")
+            lines.append(f"  mapping: {item.mapping_path}")
+            if item.inferred_subject:
+                lines.append(f"  detected_subject: {item.inferred_subject}")
+            lines.append("  mapped_relations:")
+            if item.mapped_relations:
+                for rel in item.mapped_relations:
+                    lines.append(f"    - {rel}")
+            else:
+                lines.append("    - none")
+            lines.append("  ignored_fields:")
+            if item.ignored_fields:
+                for field_name in item.ignored_fields:
+                    lines.append(f"    - {field_name}")
+            else:
+                lines.append("    - none")
     return "\n".join(lines)
 
 
@@ -2930,6 +2950,7 @@ def main(argv: list[str] | None = None) -> None:
     ingest_parser = subparsers.add_parser("ingest")
     ingest_parser.add_argument("path")
     ingest_parser.add_argument("--json", action="store_true", dest="json_output")
+    ingest_parser.add_argument("--auto-approve", action="store_true")
 
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("spec")
@@ -3379,7 +3400,7 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1)
             return
         if args.command == "ingest":
-            print(run_ingest(Path(args.path), json_output=args.json_output))
+            print(run_ingest(Path(args.path), json_output=args.json_output, auto_approve=args.auto_approve))
             return
         if args.command == "generate":
             top_k_rules = args.top_k_rules if args.top_k_rules is not None else settings.top_k_rules

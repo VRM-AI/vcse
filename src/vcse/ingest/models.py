@@ -12,6 +12,10 @@ class IngestFileResult:
     conflict_count: int
     canonical_entity_count: int = 0
     duplicate_entity_count: int = 0
+    mapping_path: str | None = None
+    inferred_subject: str | None = None
+    mapped_relations: list[str] = field(default_factory=list)
+    ignored_fields: list[str] = field(default_factory=list)
     error: str | None = None
 
     def to_dict(self) -> dict:

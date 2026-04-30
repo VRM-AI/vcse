@@ -11,6 +11,7 @@ from vcse.identity.normalizer import normalize_entity
 from vcse.ingest.detector import detect_source_files
 from vcse.ingest.models import IngestFileResult, IngestResult
 from vcse.ingest.report import persist_ingest_report
+from vcse.schema import MappingProposer, SchemaDetector, convert_rows_with_mapping, write_mapping_artifact
 
 
 class IngestError(ValueError):
@@ -27,7 +28,7 @@ class _CompiledClaims:
     duplicate_entity_count: int
 
 
-def run_ingest(path: Path, run_id: str | None = None) -> IngestResult:
+def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False) -> IngestResult:
     target = Path(path)
     if not target.exists():
         raise IngestError("INVALID_PATH", f"path not found: {target}")
@@ -50,6 +51,12 @@ def run_ingest(path: Path, run_id: str | None = None) -> IngestResult:
         try:
             adapter = get_adapter(adapter_type)
             rows = adapter.run(source_file)
+            rows, inference_info = _prepare_rows_for_ingest(
+                source_file=source_file,
+                source_type=adapter_type,
+                rows=rows,
+                auto_approve=auto_approve,
+            )
             compiled = _compile_rows(rows)
             pack_id = _build_pack_id(source_file, run_token, used_pack_ids)
             pack_path = _pack_path(pack_id)
@@ -77,6 +84,10 @@ def run_ingest(path: Path, run_id: str | None = None) -> IngestResult:
                     conflict_count=conflict_count,
                     canonical_entity_count=compiled.canonical_entity_count,
                     duplicate_entity_count=compiled.duplicate_entity_count,
+                    mapping_path=inference_info["mapping_path"],
+                    inferred_subject=inference_info["inferred_subject"],
+                    mapped_relations=inference_info["mapped_relations"],
+                    ignored_fields=inference_info["ignored_fields"],
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -107,6 +118,55 @@ def run_ingest(path: Path, run_id: str | None = None) -> IngestResult:
     )
     persist_ingest_report(result)
     return result
+
+
+def _prepare_rows_for_ingest(
+    source_file: Path,
+    source_type: str,
+    rows: list[dict],
+    auto_approve: bool,
+) -> tuple[list[dict], dict[str, object]]:
+    if _rows_are_explicit(rows):
+        return rows, {
+            "mapping_path": None,
+            "inferred_subject": None,
+            "mapped_relations": [],
+            "ignored_fields": [],
+        }
+    detector = SchemaDetector()
+    schema = detector.detect_records(rows)
+    proposer = MappingProposer()
+    proposal = proposer.propose(schema, source_type=source_type)
+    mapping = proposal.to_dict()
+    mapping_path = write_mapping_artifact(source_file, mapping)
+    if not auto_approve:
+        raise IngestError(
+            "MAPPING_APPROVAL_REQUIRED",
+            f"inferred mapping saved to {mapping_path}; rerun with --auto-approve",
+        )
+    explicit_rows = convert_rows_with_mapping(rows, mapping)
+    mapped_relations = [f"{item['path']} -> {item['relation']}" for item in mapping.get("relations", [])]
+    return explicit_rows, {
+        "mapping_path": str(mapping_path),
+        "inferred_subject": mapping.get("fields", {}).get("subject"),
+        "mapped_relations": mapped_relations,
+        "ignored_fields": list(mapping.get("ignored_fields", [])),
+    }
+
+
+def _rows_are_explicit(rows: list[dict]) -> bool:
+    if not rows:
+        return True
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        if not {"subject", "relation", "object"}.issubset(set(row.keys())) and not {
+            "entity",
+            "relation",
+            "value",
+        }.issubset(set(row.keys())):
+            return False
+    return True
 
 
 def _compile_rows(rows: list[dict]) -> _CompiledClaims:
