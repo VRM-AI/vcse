@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,19 @@ from vcse.semantic.relation_ontology import RELATION_MAP
 
 class DomainSpecError(ValueError):
     """Raised for malformed or contradictory domain specs."""
+
+
+@lru_cache(maxsize=2048)
+def get_relation_properties(relation_id: str) -> dict[str, bool]:
+    relation = str(relation_id).strip()
+    if not relation:
+        return {"functional": True}
+    repo_root = Path(__file__).resolve().parents[3]
+    spec = load_domain_spec(repo_root / "domains" / "geography.yaml")
+    for item in spec.relations:
+        if item.relation == relation:
+            return {"functional": bool(item.functional)}
+    return {"functional": True}
 
 
 def load_domain_specs(paths: list[Path]) -> dict[str, DomainSpec]:

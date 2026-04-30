@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 from vcse.conflict.model import Conflict
+from vcse.domain.loader import get_relation_properties
 
 
 class ConflictDetector:
@@ -20,6 +21,9 @@ class ConflictDetector:
 
         conflicts: list[Conflict] = []
         for (subject, relation), bucket in sorted(grouped.items()):
+            relation_props = get_relation_properties(relation)
+            if not relation_props.get("functional", True):
+                continue
             by_object: dict[str, dict[str, Any]] = {}
             for claim in bucket:
                 normalized_object = str(claim.get("normalized_object", claim.get("object", ""))).strip()
