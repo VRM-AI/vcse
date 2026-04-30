@@ -1,0 +1,16 @@
+{
+  "source_type": "json",
+  "record_path": "$",
+  "fields": {
+    "subject": "name.common"
+  },
+  "relations": [
+    {"relation": "has_capital", "path": "capital[0]", "type": "single"},
+    {"relation": "located_in_region", "path": "region", "type": "single"},
+    {"relation": "located_in_subregion", "path": "subregion", "type": "single"},
+    {"relation": "uses_currency", "path": "currencies.*.name", "type": "multi"},
+    {"relation": "language_of", "path": "languages.*", "type": "multi"},
+    {"relation": "has_country_code", "path": "cca2", "type": "single"},
+    {"relation": "shares_border_with", "path": "borders[*]", "type": "multi"}
+  ]
+}
