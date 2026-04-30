@@ -32,3 +32,6 @@ examples/packs/*_snapshot_*/
 .vcse/pipeline_runs/
 examples/packs/compiled_*_pipeline/
 benchmarks/compiled_*_pipeline.jsonl
+
+# Local datasets (intentionally not tracked)
+/datasets/
