@@ -14,11 +14,11 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, "-m", "vcse.cli", *args], capture_output=True, text=True, env=env)
 
 
-def test_conflict_detection_identifies_multi_object_conflict() -> None:
+def test_conflict_detection_identifies_functional_relation_conflict() -> None:
     claims = [
         {
             "subject": "Kazakhstan",
-            "relation": "capital_of",
+            "relation": "has_capital",
             "object": "Astana",
             "normalized_subject": "kazakhstan",
             "normalized_object": "astana",
@@ -26,7 +26,7 @@ def test_conflict_detection_identifies_multi_object_conflict() -> None:
         },
         {
             "subject": "Kazakhstan",
-            "relation": "capital_of",
+            "relation": "has_capital",
             "object": "Nur-Sultan",
             "normalized_subject": "kazakhstan",
             "normalized_object": "nursultan",
@@ -60,6 +60,68 @@ def test_no_false_conflict_for_identical_claims() -> None:
     assert ConflictDetector().detect(claims) == []
 
 
+def test_conflict_detection_allows_multi_valued_relation() -> None:
+    claims = [
+        {
+            "subject": "A",
+            "relation": "language_of",
+            "object": "French",
+            "normalized_subject": "a",
+            "normalized_object": "french",
+            "provenance": {"source_id": "s1"},
+        },
+        {
+            "subject": "A",
+            "relation": "language_of",
+            "object": "Arabic",
+            "normalized_subject": "a",
+            "normalized_object": "arabic",
+            "provenance": {"source_id": "s2"},
+        },
+    ]
+    assert ConflictDetector().detect(claims) == []
+
+
+def test_conflict_detection_mixed_relations() -> None:
+    claims = [
+        {
+            "subject": "A",
+            "relation": "has_capital",
+            "object": "Paris",
+            "normalized_subject": "a",
+            "normalized_object": "paris",
+            "provenance": {"source_id": "s1"},
+        },
+        {
+            "subject": "A",
+            "relation": "has_capital",
+            "object": "Lyon",
+            "normalized_subject": "a",
+            "normalized_object": "lyon",
+            "provenance": {"source_id": "s2"},
+        },
+        {
+            "subject": "A",
+            "relation": "language_of",
+            "object": "French",
+            "normalized_subject": "a",
+            "normalized_object": "french",
+            "provenance": {"source_id": "s3"},
+        },
+        {
+            "subject": "A",
+            "relation": "language_of",
+            "object": "Arabic",
+            "normalized_subject": "a",
+            "normalized_object": "arabic",
+            "provenance": {"source_id": "s4"},
+        },
+    ]
+    conflicts = ConflictDetector().detect(claims)
+    assert len(conflicts) == 1
+    assert conflicts[0].relation == "has_capital"
+
+
 def test_entity_normalize_cli() -> None:
     result = _run_cli("entity", "normalize", "United", "States", "--json")
     assert result.returncode == 0
@@ -76,7 +138,7 @@ def test_conflict_detect_cli(tmp_path: Path) -> None:
         {
             "claim_key": "kazakhstan|capital_of|astana",
             "subject": "Kazakhstan",
-            "relation": "capital_of",
+            "relation": "has_capital",
             "object": "Astana",
             "normalized_subject": "kazakhstan",
             "normalized_object": "astana",
@@ -85,7 +147,7 @@ def test_conflict_detect_cli(tmp_path: Path) -> None:
         {
             "claim_key": "kazakhstan|capital_of|nursultan",
             "subject": "Kazakhstan",
-            "relation": "capital_of",
+            "relation": "has_capital",
             "object": "Nur-Sultan",
             "normalized_subject": "kazakhstan",
             "normalized_object": "nursultan",
