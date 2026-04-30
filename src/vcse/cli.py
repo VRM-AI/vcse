@@ -44,7 +44,7 @@ from vcse.inference.stability import InferenceObservation, InferenceStabilityTra
 from vcse.inference.promotion import build_pack_from_promoted_claims, promote_stable_claims
 from vcse.index import SymbolicRetriever
 from vcse.engine import CaseValidationError, build_search, state_from_case
-from vcse.ingestion.pipeline import IngestionError, ingest_file
+from vcse.ingest import IngestError, run_ingest as run_autonomous_ingest
 from vcse.knowledge import (
     KnowledgePipeline,
     Source,
@@ -717,57 +717,26 @@ def run_reasonops_report(path: Path) -> str:
     return generate_report(path)
 
 
-def run_ingest(
-    path: Path,
-    template_name: str | None = None,
-    auto: bool = False,
-    dry_run: bool = False,
-    output_memory: Path | None = None,
-    export_pack: Path | None = None,
-    dsl_bundle=None,
-) -> str:
-    result = ingest_file(
-        path=path,
-        template_name=template_name,
-        auto=auto,
-        dry_run=dry_run,
-        output_memory_path=output_memory,
-        export_pack_path=export_pack,
-        dsl_bundle=dsl_bundle,
-    )
-    imported = result.import_result
+def run_ingest(path: Path, json_output: bool = False) -> str:
+    result = run_autonomous_ingest(path=path)
+    payload = result.to_dict()
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
     lines = [
-        f"status: {imported.status}",
-        f"source_id: {imported.source_id}",
-        f"frames_extracted: {imported.frames_extracted}",
-        f"created_elements: {imported.created_elements}",
-        "transitions_applied:",
+        "status: INGEST_COMPLETE",
+        f"run_id: {result.run_id}",
+        f"files_processed: {result.files_processed}",
+        f"packs_created: {json.dumps(result.packs_created)}",
+        f"total_claims: {result.total_claims}",
+        f"total_conflicts: {result.total_conflicts}",
+        f"total_entities: {result.total_entities}",
+        f"total_duplicate_entities: {result.total_duplicate_entities}",
+        f"false_verified_count: {result.false_verified_count}",
     ]
-    if imported.transitions_applied:
-        for item in imported.transitions_applied:
-            lines.append(f"  - {item}")
-    else:
-        lines.append("  - none")
-    lines.append("contradictions_detected:")
-    if imported.contradictions_detected:
-        for item in imported.contradictions_detected:
-            lines.append(f"  - {item}")
-    else:
-        lines.append("  - none")
-    if imported.warnings:
-        lines.append("warnings:")
-        for warning in imported.warnings:
-            lines.append(f"  - {warning}")
-    if imported.errors:
+    if result.errors:
         lines.append("errors:")
-        for error in imported.errors:
-            lines.append(f"  - {error}")
-    if dry_run:
-        lines.append("dry_run: true")
-    if output_memory:
-        lines.append(f"output_memory: {output_memory}")
-    if export_pack:
-        lines.append(f"export_pack: {export_pack}")
+        for item in result.errors:
+            lines.append(f"  - {item}")
     return "\n".join(lines)
 
 
@@ -2960,14 +2929,7 @@ def main(argv: list[str] | None = None) -> None:
 
     ingest_parser = subparsers.add_parser("ingest")
     ingest_parser.add_argument("path")
-    ingest_parser.add_argument("--template", dest="template_name")
-    ingest_parser.add_argument("--auto", action="store_true")
-    ingest_parser.add_argument("--dry-run", action="store_true")
-    ingest_parser.add_argument("--output-memory", type=Path)
-    ingest_parser.add_argument("--export-pack", type=Path)
-    ingest_parser.add_argument("--dsl")
-    ingest_parser.add_argument("--pack", action="append", dest="pack_values")
-    ingest_parser.add_argument("--packs")
+    ingest_parser.add_argument("--json", action="store_true", dest="json_output")
 
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("spec")
@@ -3417,22 +3379,7 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1)
             return
         if args.command == "ingest":
-            dsl_bundle, _, _ = resolve_runtime_inputs(
-                dsl_path=args.dsl,
-                pack_values=args.pack_values,
-                packs_csv=args.packs,
-            )
-            print(
-                run_ingest(
-                    Path(args.path),
-                    template_name=args.template_name,
-                    auto=args.auto,
-                    dry_run=args.dry_run,
-                    output_memory=args.output_memory,
-                    export_pack=args.export_pack,
-                    dsl_bundle=dsl_bundle,
-                )
-            )
+            print(run_ingest(Path(args.path), json_output=args.json_output))
             return
         if args.command == "generate":
             top_k_rules = args.top_k_rules if args.top_k_rules is not None else settings.top_k_rules
@@ -4252,7 +4199,7 @@ def main(argv: list[str] | None = None) -> None:
         ValueError,
         BenchmarkCaseError,
         CaseValidationError,
-        IngestionError,
+        IngestError,
         DSLError,
         GenerationError,
         GauntletError,
