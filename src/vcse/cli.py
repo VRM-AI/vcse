@@ -107,6 +107,8 @@ from vcse.knowledge.pack_model import KnowledgeClaim
 from vcse.semantic.runtime_regions import RuntimeRegionIndex
 from vcse.pipeline import PackPipelineRunner
 from vcse.pipeline.runner import PipelineError
+from vcse.pipeline.runner import cross_pack_reason
+from vcse.reasoning.global_graph import build_global_claim_graph
 from vcse.identity.normalizer import normalize_entity
 
 
@@ -2919,6 +2921,72 @@ def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
     return "\n".join(lines)
 
 
+def run_reason(packs_dir: Path, json_output: bool = False) -> str:
+    if not packs_dir.exists() or not packs_dir.is_dir():
+        raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
+
+    pack_dirs = sorted(
+        [
+            path
+            for path in packs_dir.iterdir()
+            if path.is_dir() and (path / "pack.json").exists() and (path / "claims.jsonl").exists()
+        ],
+        key=lambda item: str(item),
+    )
+    graph = build_global_claim_graph(pack_dirs)
+    runtime_claims = [item.to_dict() for item in graph.claims]
+    inferred_claims = cross_pack_reason(runtime_claims, rules=None)
+    conflicts = ConflictDetector().detect_global_conflicts(runtime_claims + inferred_claims)
+    payload = {
+        "status": "GLOBAL_REASONING_COMPLETE",
+        "pack_dir": str(packs_dir),
+        "pack_count": len(pack_dirs),
+        "input_claim_count": len(runtime_claims),
+        "inferred_claims": inferred_claims,
+        "conflicts": [
+            {
+                "subject": item.subject,
+                "relation": item.relation,
+                "object_a": item.object_a,
+                "object_b": item.object_b,
+                "source_a": item.source_a,
+                "source_b": item.source_b,
+                "reason": item.reason,
+                "pack_ids": list(item.pack_ids),
+                "provenance_refs": list(item.provenance_refs),
+            }
+            for item in conflicts
+        ],
+        "provenance": [
+            {
+                "claim_id": str(item.get("claim_id", "")),
+                "derived_from": list(item.get("derived_from", [])),
+            }
+            for item in inferred_claims
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        "status: GLOBAL_REASONING_COMPLETE",
+        f"pack_dir: {packs_dir}",
+        f"pack_count: {len(pack_dirs)}",
+        f"input_claim_count: {len(runtime_claims)}",
+        f"inferred_claim_count: {len(inferred_claims)}",
+        f"conflict_count: {len(conflicts)}",
+    ]
+    if inferred_claims:
+        lines.append("inferred_claims:")
+        for item in inferred_claims:
+            lines.append(
+                f"  - {item['subject']} {item['relation']} {item['object']} "
+                f"(trust_tier={item.get('trust_tier', 0)}, claim_id={item.get('claim_id', '')})"
+            )
+    else:
+        lines.append("inferred_claims: none")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="vcse")
     parser.add_argument("--config")
@@ -3013,6 +3081,10 @@ def main(argv: list[str] | None = None) -> None:
     conflict_detect_parser = conflict_subparsers.add_parser("detect")
     conflict_detect_parser.add_argument("--pack", required=True, dest="pack_ref")
     conflict_detect_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    reason_parser = subparsers.add_parser("reason")
+    reason_parser.add_argument("--packs", required=True, type=Path, dest="packs_dir")
+    reason_parser.add_argument("--json", action="store_true", dest="json_output")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -3486,6 +3558,9 @@ def main(argv: list[str] | None = None) -> None:
                     ),
                 )
             )
+            return
+        if args.command == "reason":
+            print(run_reason(args.packs_dir, json_output=args.json_output))
             return
         if args.command == "index":
             if args.index_command == "build":

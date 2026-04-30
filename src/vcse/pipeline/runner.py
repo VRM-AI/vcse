@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,122 @@ from vcse.pipeline.models import (
 
 class PipelineError(ValueError):
     """Raised when the pipeline config or execution is invalid."""
+
+
+def cross_pack_reason(claims: list[dict[str, Any]], rules: list[dict[str, str]] | None = None) -> list[dict[str, Any]]:
+    """Deterministic cross-pack inference with explicit provenance chaining."""
+    active_rules = rules or [
+        {
+            "left_relation": "has_type",
+            "bridge_relation": "implies",
+            "output_relation": "is",
+        }
+    ]
+
+    normalized_claims = sorted(
+        claims,
+        key=lambda item: (
+            str(item.get("subject", "")),
+            str(item.get("relation", "")),
+            str(item.get("object", "")),
+            str(item.get("pack_id", "")),
+            str(item.get("claim_id", "")),
+        ),
+    )
+    claims_by_subject_relation: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for claim in normalized_claims:
+        key = (str(claim.get("subject", "")), str(claim.get("relation", "")))
+        claims_by_subject_relation.setdefault(key, []).append(claim)
+
+    inferred_by_key: dict[str, dict[str, Any]] = {}
+    for rule in active_rules:
+        left_relation = str(rule.get("left_relation", "")).strip()
+        bridge_relation = str(rule.get("bridge_relation", "")).strip()
+        output_relation = str(rule.get("output_relation", "")).strip()
+        if not left_relation or not bridge_relation or not output_relation:
+            continue
+
+        left_claims = [item for item in normalized_claims if str(item.get("relation", "")) == left_relation]
+        for left in left_claims:
+            bridge_subject = str(left.get("object", ""))
+            right_candidates = claims_by_subject_relation.get((bridge_subject, bridge_relation), [])
+            for right in right_candidates:
+                subject = str(left.get("subject", ""))
+                obj = str(right.get("object", ""))
+                if not subject or not obj:
+                    continue
+                source_trusts = [_parse_trust_tier(left.get("trust_tier", 0)), _parse_trust_tier(right.get("trust_tier", 0))]
+                derived_trust = min(source_trusts)
+                derived_from = [
+                    {
+                        "pack_id": str(left.get("pack_id", "")),
+                        "claim_id": str(left.get("claim_id", "")),
+                    },
+                    {
+                        "pack_id": str(right.get("pack_id", "")),
+                        "claim_id": str(right.get("claim_id", "")),
+                    },
+                ]
+                inferred = {
+                    "subject": subject,
+                    "relation": output_relation,
+                    "object": obj,
+                    "pack_id": "global",
+                    "provenance": {
+                        "source_id": "cross_pack_reasoning",
+                        "source_type": "derived",
+                        "evidence_text": f"{left_relation}+{bridge_relation}",
+                    },
+                    "trust_tier": derived_trust,
+                    "derived_from": derived_from,
+                }
+                inferred["claim_id"] = _inferred_claim_id(inferred)
+                key = "|".join([subject, output_relation, obj, inferred["claim_id"]])
+                inferred_by_key[key] = inferred
+
+    return sorted(
+        inferred_by_key.values(),
+        key=lambda item: (
+            str(item.get("subject", "")),
+            str(item.get("relation", "")),
+            str(item.get("object", "")),
+            str(item.get("claim_id", "")),
+        ),
+    )
+
+
+def _parse_trust_tier(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    text = str(value or "").strip()
+    if text.isdigit():
+        return int(text)
+    if text.upper().startswith("T"):
+        digits = "".join(ch for ch in text if ch.isdigit())
+        if digits:
+            return int(digits)
+    return 0
+
+
+def _inferred_claim_id(payload: dict[str, Any]) -> str:
+    derived = payload.get("derived_from", [])
+    key = "|".join(
+        [
+            str(payload.get("subject", "")),
+            str(payload.get("relation", "")),
+            str(payload.get("object", "")),
+            ";".join(
+                f"{str(item.get('pack_id', ''))}:{str(item.get('claim_id', ''))}"
+                for item in derived
+                if isinstance(item, dict)
+            ),
+        ]
+    )
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
 class PackPipelineRunner:

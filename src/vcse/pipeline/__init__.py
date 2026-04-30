@@ -7,7 +7,7 @@ from vcse.pipeline.models import (
     PipelineRunReport,
     PipelineStageReport,
 )
-from vcse.pipeline.runner import PackPipelineRunner, PipelineError
+from vcse.pipeline.runner import PackPipelineRunner, PipelineError, cross_pack_reason
 
 __all__ = [
     "PIPELINE_FAILED",
@@ -17,4 +17,5 @@ __all__ = [
     "PipelineStageReport",
     "PackPipelineRunner",
     "PipelineError",
+    "cross_pack_reason",
 ]
