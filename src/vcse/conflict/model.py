@@ -14,3 +14,5 @@ class Conflict:
     source_a: str
     source_b: str
     reason: str
+    pack_ids: tuple[str, ...] = ()
+    provenance_refs: tuple[str, ...] = ()
