@@ -6,67 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
-
-
-def _parse_path(path: str) -> list[tuple[str, str | int | None]]:
-    tokens: list[tuple[str, str | int | None]] = []
-    parts = [p for p in path.split(".") if p]
-    for part in parts:
-        if part == "*":
-            tokens.append(("wildcard_obj", None))
-            continue
-        if part.endswith("[*]"):
-            name = part[:-3]
-            if name:
-                tokens.append(("field", name))
-            tokens.append(("wildcard_list", None))
-            continue
-        if "[" in part and part.endswith("]"):
-            left = part.index("[")
-            name = part[:left]
-            idx_text = part[left + 1 : -1]
-            if not idx_text.isdigit():
-                raise ValueError(f"Unsupported path token: {part}")
-            if name:
-                tokens.append(("field", name))
-            tokens.append(("index", int(idx_text)))
-            continue
-        tokens.append(("field", part))
-    return tokens
-
-
-def _resolve_many(record: Any, path: str) -> list[Any]:
-    values: list[Any] = [record]
-    for token, token_value in _parse_path(path):
-        next_values: list[Any] = []
-        for value in values:
-            if token == "field":
-                if isinstance(value, dict) and token_value in value:
-                    next_values.append(value[token_value])
-            elif token == "index":
-                if isinstance(value, list) and 0 <= int(token_value) < len(value):
-                    next_values.append(value[int(token_value)])
-            elif token == "wildcard_obj":
-                if isinstance(value, dict):
-                    next_values.extend(value.values())
-            elif token == "wildcard_list":
-                if isinstance(value, list):
-                    next_values.extend(value)
-        values = next_values
-        if not values:
-            break
-    return values
-
-
-def _as_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value.strip() or None
-    if isinstance(value, (int, float, bool)):
-        return str(value)
-    return None
+from vcse.schema.proposer import convert_rows_with_mapping
 
 
 def _load_json(path: Path) -> Any:
@@ -90,44 +30,12 @@ def convert(input_path: Path, mapping_path: Path, output_path: Path) -> tuple[in
         raise ValueError("Only mapping source_type 'json' is supported.")
 
     records = _records_from_source(source, mapping.get("record_path", "$"))
-    subject_path = mapping["fields"]["subject"]
-    relations = mapping.get("relations", [])
-
-    triples: set[tuple[str, str, str]] = set()
-    for record in records:
-        subject_values = _resolve_many(record, subject_path)
-        subject = _as_text(subject_values[0]) if subject_values else None
-        if not subject:
-            continue
-        for relation_spec in relations:
-            relation = relation_spec["relation"]
-            relation_type = relation_spec["type"]
-            resolved = _resolve_many(record, relation_spec["path"])
-            if relation_type == "single":
-                candidate = _as_text(resolved[0]) if resolved else None
-                if candidate:
-                    triples.add((subject, relation, candidate))
-                continue
-            if relation_type == "multi":
-                for candidate_value in resolved:
-                    candidate = _as_text(candidate_value)
-                    if candidate:
-                        triples.add((subject, relation, candidate))
-                continue
-            raise ValueError(f"Unsupported relation type: {relation_type}")
-
-    sorted_triples = sorted(triples, key=lambda item: (item[0], item[1], item[2]))
+    explicit_rows = convert_rows_with_mapping(records, mapping)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
-        for subject, relation, obj in sorted_triples:
-            handle.write(
-                json.dumps(
-                    {"subject": subject, "relation": relation, "object": obj},
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-    return len(sorted_triples), len(records)
+        for row in explicit_rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    return len(explicit_rows), len(records)
 
 
 def main() -> None:
