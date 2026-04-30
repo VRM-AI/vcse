@@ -1,0 +1,62 @@
+[
+  {
+    "name": {"common": "France"},
+    "capital": ["Paris"],
+    "region": "Europe",
+    "subregion": "Western Europe",
+    "currencies": {"EUR": {"name": "Euro", "symbol": "€"}},
+    "languages": {"fra": "French"},
+    "cca2": "FR",
+    "borders": ["BEL", "DEU", "ITA", "ESP", "CHE", "LUX"]
+  },
+  {
+    "name": {"common": "Germany"},
+    "capital": ["Berlin"],
+    "region": "Europe",
+    "subregion": "Western Europe",
+    "currencies": {"EUR": {"name": "Euro", "symbol": "€"}},
+    "languages": {"deu": "German"},
+    "cca2": "DE",
+    "borders": ["AUT", "BEL", "CZE", "DNK", "FRA", "LUX", "NLD", "POL", "CHE"]
+  },
+  {
+    "name": {"common": "Japan"},
+    "capital": ["Tokyo"],
+    "region": "Asia",
+    "subregion": "Eastern Asia",
+    "currencies": {"JPY": {"name": "Japanese yen", "symbol": "¥"}},
+    "languages": {"jpn": "Japanese"},
+    "cca2": "JP",
+    "borders": []
+  },
+  {
+    "name": {"common": "Brazil"},
+    "capital": ["Brasília"],
+    "region": "Americas",
+    "subregion": "South America",
+    "currencies": {"BRL": {"name": "Brazilian real", "symbol": "R$"}},
+    "languages": {"por": "Portuguese"},
+    "cca2": "BR",
+    "borders": ["ARG", "BOL", "COL", "GUY", "PRY", "PER", "SUR", "URY", "VEN", "GUF"]
+  },
+  {
+    "name": {"common": "Kenya"},
+    "capital": ["Nairobi"],
+    "region": "Africa",
+    "subregion": "Eastern Africa",
+    "currencies": {"KES": {"name": "Kenyan shilling", "symbol": "KSh"}},
+    "languages": {"eng": "English", "swa": "Swahili"},
+    "cca2": "KE",
+    "borders": ["ETH", "SOM", "SSD", "TZA", "UGA"]
+  },
+  {
+    "name": {"common": "Australia"},
+    "capital": ["Canberra"],
+    "region": "Oceania",
+    "subregion": "Australia and New Zealand",
+    "currencies": {"AUD": {"name": "Australian dollar", "symbol": "$"}},
+    "languages": {"eng": "English"},
+    "cca2": "AU",
+    "borders": []
+  }
+]
