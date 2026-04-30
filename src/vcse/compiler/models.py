@@ -23,6 +23,10 @@ class CompileReport:
     input_record_count: int
     claim_count: int
     duplicate_count: int
+    conflict_count: int
+    duplicate_entity_count: int
+    canonical_entity_count: int
+    conflicts_sample: list[dict[str, str]]
     provenance_count: int
     benchmark_count: int
     output_path: str

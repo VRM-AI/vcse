@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from vcse.compiler.models import COMPILE_PASSED, CompileReport, CompilerMapping
+from vcse.conflict.detector import ConflictDetector
 from vcse.domain.loader import load_domain_spec
+from vcse.identity.alias_registry import AliasRegistry
+from vcse.identity.model import CanonicalEntity
+from vcse.identity.normalizer import normalize_entity
 
 
 class CompilerError(ValueError):
@@ -40,6 +44,7 @@ class KnowledgeCompiler:
         benchmark_rows: list[dict[str, Any]] = []
         seen_claim_keys: set[str] = set()
         duplicate_count = 0
+        alias_registry = AliasRegistry()
 
         template_by_relation = {item.relation: item for item in spec.benchmark_templates}
 
@@ -51,12 +56,36 @@ class KnowledgeCompiler:
             if subject_raw is None or str(subject_raw).strip() == "":
                 continue
             subject = str(subject_raw).strip()
+            normalized_subject = normalize_entity(subject)
+            if not normalized_subject:
+                continue
+            subject_canonical_id = f"entity:{normalized_subject}"
+            alias_registry.add(
+                CanonicalEntity(
+                    canonical_id=subject_canonical_id,
+                    original_text=subject,
+                    normalized=normalized_subject,
+                    source_id=mapping.source_id,
+                )
+            )
 
             for mapping_alias, source_field in mapping.fields.items():
                 relation = mapping.relation_map[mapping_alias]
                 value = record.get(source_field)
                 for object_value in self._expand_value(value):
-                    claim_key = self._claim_key(subject, relation, object_value)
+                    normalized_object = normalize_entity(object_value)
+                    if not normalized_object:
+                        continue
+                    object_canonical_id = f"entity:{normalized_object}"
+                    alias_registry.add(
+                        CanonicalEntity(
+                            canonical_id=object_canonical_id,
+                            original_text=object_value,
+                            normalized=normalized_object,
+                            source_id=mapping.source_id,
+                        )
+                    )
+                    claim_key = self._claim_key(normalized_subject, relation, normalized_object)
                     if claim_key in seen_claim_keys:
                         duplicate_count += 1
                         continue
@@ -67,6 +96,10 @@ class KnowledgeCompiler:
                         "subject": subject,
                         "relation": relation,
                         "object": object_value,
+                        "normalized_subject": normalized_subject,
+                        "normalized_object": normalized_object,
+                        "subject_canonical_id": subject_canonical_id,
+                        "object_canonical_id": object_canonical_id,
                         "qualifiers": {"inference_type": "explicit"},
                         "provenance": {
                             "source_type": "structured_record",
@@ -89,6 +122,10 @@ class KnowledgeCompiler:
                             "relation": relation,
                             "field": source_field,
                             "value": object_value,
+                            "normalized_subject": normalized_subject,
+                            "normalized_object": normalized_object,
+                            "subject_canonical_id": subject_canonical_id,
+                            "object_canonical_id": object_canonical_id,
                         }
                     )
 
@@ -105,22 +142,57 @@ class KnowledgeCompiler:
                             }
                         )
 
+        conflicts = ConflictDetector().detect(claims)
+        duplicate_entity_count = max(0, len(alias_registry.normalized_mappings) - alias_registry.canonical_count())
+        canonical_entity_count = alias_registry.canonical_count()
+        conflicts_sample = [
+            {
+                "subject": item.subject,
+                "relation": item.relation,
+                "object_a": item.object_a,
+                "object_b": item.object_b,
+                "source_a": item.source_a,
+                "source_b": item.source_b,
+                "reason": item.reason,
+            }
+            for item in conflicts[:10]
+        ]
+
         output_dir = output_root / output_pack_id
         if output_dir.exists() and any(output_dir.iterdir()):
             raise CompilerError(f"output pack path must be new/empty: {output_dir}")
         output_dir.mkdir(parents=True, exist_ok=False)
 
-        self._write_json(output_dir / "pack.json", self._pack_metadata(output_pack_id, mapping.domain_id, len(claims), len(provenance_rows)))
+        self._write_json(
+            output_dir / "pack.json",
+            self._pack_metadata(
+                output_pack_id,
+                mapping.domain_id,
+                len(claims),
+                len(provenance_rows),
+                len(conflicts),
+            ),
+        )
         self._write_jsonl(output_dir / "claims.jsonl", claims)
         self._write_jsonl(output_dir / "provenance.jsonl", provenance_rows)
         self._write_json(output_dir / "metrics.json", {
             "claim_count": len(claims),
             "input_record_count": len(records),
             "duplicate_count": duplicate_count,
+            "conflict_count": len(conflicts),
+            "duplicate_entity_count": duplicate_entity_count,
+            "canonical_entity_count": canonical_entity_count,
             "provenance_count": len(provenance_rows),
             "benchmark_count": len(benchmark_rows),
             "false_verified_count": 0,
         })
+        self._write_json(
+            output_dir / "conflicts.json",
+            {
+                "conflict_count": len(conflicts),
+                "conflicts": conflicts_sample,
+            },
+        )
         self._write_json(output_dir / "trust_report.json", {
             "status": "TRUST_PENDING",
             "false_verified_count": 0,
@@ -142,6 +214,10 @@ class KnowledgeCompiler:
             input_record_count=len(records),
             claim_count=len(claims),
             duplicate_count=duplicate_count,
+            conflict_count=len(conflicts),
+            duplicate_entity_count=duplicate_entity_count,
+            canonical_entity_count=canonical_entity_count,
+            conflicts_sample=conflicts_sample,
             provenance_count=len(provenance_rows),
             benchmark_count=len(benchmark_rows),
             output_path=str(output_dir),
@@ -237,7 +313,14 @@ class KnowledgeCompiler:
     def _claim_key(self, subject: str, relation: str, object_value: str) -> str:
         return f"{subject}|{relation}|{object_value}"
 
-    def _pack_metadata(self, pack_id: str, domain_id: str, claim_count: int, provenance_count: int) -> dict[str, Any]:
+    def _pack_metadata(
+        self,
+        pack_id: str,
+        domain_id: str,
+        claim_count: int,
+        provenance_count: int,
+        conflict_count: int,
+    ) -> dict[str, Any]:
         return {
             "id": pack_id,
             "version": "1.0.0",
@@ -245,7 +328,7 @@ class KnowledgeCompiler:
             "lifecycle_status": "candidate",
             "claim_count": claim_count,
             "provenance_count": provenance_count,
-            "conflict_count": 0,
+            "conflict_count": conflict_count,
             "constraint_count": 0,
             "template_count": 0,
             "metrics": {},

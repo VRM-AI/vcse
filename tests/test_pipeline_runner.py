@@ -114,6 +114,9 @@ def test_valid_pipeline_runs_end_to_end() -> None:
 
     assert report.status == "PIPELINE_PASSED"
     assert report.pack_id == pack_id
+    assert report.conflict_count >= 0
+    assert report.canonical_entity_count >= 0
+    assert report.duplicate_entity_count >= 0
 
 
 def test_malformed_config_fails_clearly() -> None:

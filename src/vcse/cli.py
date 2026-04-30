@@ -19,6 +19,7 @@ from vcse.benchmark_inference_classification import InferenceType, classify_reso
 from vcse.config import load_settings
 from vcse.domain.loader import DomainSpecError, load_domain_spec
 from vcse.compiler import CompilerError, KnowledgeCompiler, compile_report_to_dict
+from vcse.conflict.detector import ConflictDetector
 from vcse.dsl import DSLCompiler, DSLLoader, DSLValidator, GLOBAL_REGISTRY
 from vcse.dsl.errors import DSLError
 from vcse.gauntlet import (
@@ -106,6 +107,7 @@ from vcse.knowledge.pack_model import KnowledgeClaim
 from vcse.semantic.runtime_regions import RuntimeRegionIndex
 from vcse.pipeline import PackPipelineRunner
 from vcse.pipeline.runner import PipelineError
+from vcse.identity.normalizer import normalize_entity
 
 
 def build_logic_demo_state() -> WorldStateMemory:
@@ -2740,6 +2742,9 @@ def run_compile_knowledge(
             f"input_record_count: {report.input_record_count}",
             f"claim_count: {report.claim_count}",
             f"duplicate_count: {report.duplicate_count}",
+            f"conflict_count: {report.conflict_count}",
+            f"duplicate_entity_count: {report.duplicate_entity_count}",
+            f"canonical_entity_count: {report.canonical_entity_count}",
             f"provenance_count: {report.provenance_count}",
             f"benchmark_count: {report.benchmark_count}",
             f"output_path: {report.output_path}",
@@ -2818,6 +2823,9 @@ def run_pipeline_run(
         f"run_id: {payload['run_id']}",
         f"pack_id: {payload['pack_id']}",
         f"output_dir: {payload['output_dir']}",
+        f"conflict_count: {payload.get('conflict_count', 0)}",
+        f"duplicate_entity_count: {payload.get('duplicate_entity_count', 0)}",
+        f"canonical_entity_count: {payload.get('canonical_entity_count', 0)}",
         "stages:",
     ]
     for stage in payload["stages"]:
@@ -2848,6 +2856,9 @@ def run_pipeline_inspect(
         f"run_id: {payload.get('run_id', run_id)}",
         f"pack_id: {payload.get('pack_id', '')}",
         f"output_dir: {payload.get('output_dir', str(report_path.parent))}",
+        f"conflict_count: {payload.get('conflict_count', 0)}",
+        f"duplicate_entity_count: {payload.get('duplicate_entity_count', 0)}",
+        f"canonical_entity_count: {payload.get('canonical_entity_count', 0)}",
         "stages:",
     ]
     for stage in payload.get("stages", []):
@@ -2857,6 +2868,65 @@ def run_pipeline_inspect(
         lines.append("reasons:")
         for reason in reasons:
             lines.append(f"  - {reason}")
+    return "\n".join(lines)
+
+
+def run_entity_normalize(text: str, json_output: bool = False) -> str:
+    normalized = normalize_entity(text)
+    payload = {
+        "normalized": normalized,
+        "canonical_id": f"entity:{normalized}",
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            f"normalized: {payload['normalized']}",
+            f"canonical_id: {payload['canonical_id']}",
+        ]
+    )
+
+
+def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
+    pack_path = _resolve_pack_reference(pack_ref)
+    claims_path = pack_path / "claims.jsonl"
+    if not claims_path.exists():
+        raise PackError("PACK_NOT_FOUND", f"missing claims.jsonl in {pack_path}")
+    claims = [json.loads(line) for line in claims_path.read_text().splitlines() if line.strip()]
+    conflicts = ConflictDetector().detect(claims)
+    payload = {
+        "pack": pack_ref,
+        "pack_path": str(pack_path),
+        "conflict_count": len(conflicts),
+        "conflicts": [
+            {
+                "subject": item.subject,
+                "relation": item.relation,
+                "object_a": item.object_a,
+                "object_b": item.object_b,
+                "source_a": item.source_a,
+                "source_b": item.source_b,
+                "reason": item.reason,
+            }
+            for item in conflicts
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"pack: {pack_ref}",
+        f"pack_path: {pack_path}",
+        f"conflict_count: {len(conflicts)}",
+        "conflicts:",
+    ]
+    if not conflicts:
+        lines.append("  - none")
+    else:
+        for item in conflicts:
+            lines.append(
+                f"  - {item.subject}|{item.relation}: {item.object_a} <> {item.object_b} "
+                f"({item.source_a} vs {item.source_b})"
+            )
     return "\n".join(lines)
 
 
@@ -2948,6 +3018,18 @@ def main(argv: list[str] | None = None) -> None:
 
     normalize_parser = subparsers.add_parser("normalize")
     normalize_parser.add_argument("text", nargs="*", default=[])
+
+    entity_parser = subparsers.add_parser("entity")
+    entity_subparsers = entity_parser.add_subparsers(dest="entity_command")
+    entity_normalize_parser = entity_subparsers.add_parser("normalize")
+    entity_normalize_parser.add_argument("text", nargs="+")
+    entity_normalize_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    conflict_parser = subparsers.add_parser("conflict")
+    conflict_subparsers = conflict_parser.add_subparsers(dest="conflict_command")
+    conflict_detect_parser = conflict_subparsers.add_parser("detect")
+    conflict_detect_parser.add_argument("--pack", required=True, dest="pack_ref")
+    conflict_detect_parser.add_argument("--json", action="store_true", dest="json_output")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -4134,6 +4216,14 @@ def main(argv: list[str] | None = None) -> None:
             text = " ".join(args.text) if args.text else ""
             print(run_normalize(text))
             return
+        if args.command == "entity":
+            if args.entity_command == "normalize":
+                print(run_entity_normalize(" ".join(args.text), json_output=args.json_output))
+                return
+        if args.command == "conflict":
+            if args.conflict_command == "detect":
+                print(run_conflict_detect(args.pack_ref, json_output=args.json_output))
+                return
         if args.command == "parse":
             text = " ".join(args.text) if args.text else ""
             print(run_parse(text))

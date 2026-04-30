@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from pathlib import Path
 
 PIPELINE_PASSED = "PIPELINE_PASSED"
@@ -40,7 +41,10 @@ class PipelineRunReport:
     pack_id: str
     stages: list[PipelineStageReport]
     output_dir: str
-    reasons: list[str]
+    conflict_count: int = 0
+    duplicate_entity_count: int = 0
+    canonical_entity_count: int = 0
+    reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -58,5 +62,8 @@ class PipelineRunReport:
                 for stage in self.stages
             ],
             "output_dir": self.output_dir,
+            "conflict_count": self.conflict_count,
+            "duplicate_entity_count": self.duplicate_entity_count,
+            "canonical_entity_count": self.canonical_entity_count,
             "reasons": list(self.reasons),
         }

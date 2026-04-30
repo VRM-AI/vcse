@@ -164,6 +164,21 @@ def test_duplicate_claims_deduped(tmp_path: Path) -> None:
     assert report.duplicate_count > 0
 
 
+def test_claim_keys_are_normalized(tmp_path: Path) -> None:
+    compiler = KnowledgeCompiler()
+    source = tmp_path / "source.json"
+    mapping = tmp_path / "mapping.json"
+    _write_json(source, [{"country": "United States", "capital": "Washington, D.C.", "languages": ["English"], "region": "North America"}])
+    _write_json(mapping, _mapping())
+
+    compiler.compile(source, mapping, Path("domains/geography.yaml"), "compiled", tmp_path)
+    claims = _read_jsonl(tmp_path / "compiled" / "claims.jsonl")
+    assert any(
+        claim["claim_key"].startswith("united_states|")
+        for claim in claims
+    )
+
+
 def test_every_claim_has_provenance(tmp_path: Path) -> None:
     compiler = KnowledgeCompiler()
     source = tmp_path / "source.json"

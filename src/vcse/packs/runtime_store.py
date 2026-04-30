@@ -12,10 +12,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from vcse.identity.normalizer import normalize_entity
 from vcse.packs.integrity import compute_pack_hash
 from vcse.packs.sharding import SHARD_DEFINITIONS, assign_shard
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -296,8 +297,18 @@ class RuntimeStoreCompiler:
             stage_timings_ms["claims_insert_ms"] = round((time.perf_counter() - claims_insert_started) * 1000, 3)
             dictionary_insert_started = time.perf_counter()
             conn.executemany(
-                "INSERT INTO entity_dictionary (entity_id, entity_text) VALUES (?, ?)",
-                sorted(((v, k) for k, v in entity_dict.items()), key=lambda item: item[0]),
+                "INSERT INTO entity_dictionary (entity_id, entity_text, normalized, canonical_id) VALUES (?, ?, ?, ?)",
+                sorted(
+                    ((v, k, normalize_entity(k), f"entity:{normalize_entity(k)}") for k, v in entity_dict.items()),
+                    key=lambda item: item[0],
+                ),
+            )
+            conn.executemany(
+                "INSERT OR REPLACE INTO entity_aliases (normalized, canonical_id) VALUES (?, ?)",
+                sorted(
+                    {(normalize_entity(k), f"entity:{normalize_entity(k)}") for k in entity_dict}.copy(),
+                    key=lambda item: item[0],
+                ),
             )
             conn.executemany(
                 "INSERT INTO relation_dictionary (relation_id, relation_text) VALUES (?, ?)",
@@ -398,6 +409,7 @@ class RuntimeStoreCompiler:
             DROP TABLE IF EXISTS provenance;
             DROP TABLE IF EXISTS entity_dictionary;
             DROP TABLE IF EXISTS relation_dictionary;
+            DROP TABLE IF EXISTS entity_aliases;
             DROP TABLE IF EXISTS shards;
 
             CREATE TABLE metadata (
@@ -420,7 +432,13 @@ class RuntimeStoreCompiler:
 
             CREATE TABLE entity_dictionary (
                 entity_id TEXT PRIMARY KEY,
-                entity_text TEXT NOT NULL UNIQUE
+                entity_text TEXT NOT NULL UNIQUE,
+                normalized TEXT NOT NULL,
+                canonical_id TEXT NOT NULL
+            );
+            CREATE TABLE entity_aliases (
+                normalized TEXT PRIMARY KEY,
+                canonical_id TEXT NOT NULL
             );
             CREATE TABLE relation_dictionary (
                 relation_id TEXT PRIMARY KEY,
@@ -454,6 +472,8 @@ class RuntimeStoreCompiler:
             CREATE INDEX idx_claim_subject_relation_ids ON claims(subject_id, relation_id);
             CREATE INDEX idx_claim_relation_object_ids ON claims(relation_id, object_id);
             CREATE INDEX idx_claim_shard_relation ON claims(shard_id, relation_id);
+            CREATE INDEX idx_entity_normalized ON entity_dictionary(normalized);
+            CREATE INDEX idx_entity_canonical ON entity_dictionary(canonical_id);
             CREATE INDEX idx_provenance_claim_key ON provenance(claim_key);
             CREATE INDEX idx_provenance_source_id ON provenance(source_id);
             """

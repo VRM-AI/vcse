@@ -127,7 +127,7 @@ def test_store_info_works(tmp_path: Path) -> None:
     assert info.returncode == 0
     payload = json.loads(info.stdout)
     assert payload["pack_id"] == "sample_pack"
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["claim_count"] == 2
     assert payload["provenance_count"] == 2
     assert payload["store_size_bytes"] > 0

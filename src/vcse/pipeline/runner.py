@@ -352,6 +352,9 @@ class PackPipelineRunner:
             pack_id=config.compiler_pack_id,
             stages=stages,
             output_dir=str(output_dir),
+            conflict_count=self._extract_compile_metric(stages, "conflict_count"),
+            duplicate_entity_count=self._extract_compile_metric(stages, "duplicate_entity_count"),
+            canonical_entity_count=self._extract_compile_metric(stages, "canonical_entity_count"),
             reasons=sorted(set(reasons)),
         )
         (output_dir / "pipeline_report.json").write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n")
@@ -365,3 +368,13 @@ class PackPipelineRunner:
         import hashlib
 
         return hashlib.sha256(payload).hexdigest()
+
+    def _extract_compile_metric(self, stages: list[PipelineStageReport], key: str) -> int:
+        for stage in stages:
+            if stage.stage != "compiler":
+                continue
+            value = stage.details.get(key)
+            if value is None:
+                return 0
+            return int(value)
+        return 0
