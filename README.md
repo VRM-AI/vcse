@@ -137,6 +137,33 @@ See [docs/INGESTION.md](docs/INGESTION.md) and
 
 Automated pipeline docs: [docs/AUTOMATED_PACK_ECOSYSTEM.md](docs/AUTOMATED_PACK_ECOSYSTEM.md).
 
+## Quick Start — Dataset Conversion + Ingest
+
+VCSE conversion is explicit and mapping-driven. The mapping declares which source
+fields become `subject`, `relation`, and `object` rows, so output is
+deterministic and auditable. VCSE 5.3 will add mapping automation; in 5.2.2 the
+mapping remains explicit by design.
+
+1. Convert sample dataset into explicit triples:
+
+```bash
+python scripts/convert_to_explicit.py
+```
+
+2. Ingest generated data:
+
+```bash
+vcse ingest datasets/processed/countries_explicit.jsonl --json
+```
+
+3. Inspect candidate packs:
+
+```bash
+vcse pack index --dirs examples/packs
+vcse pack validate <pack_id>
+vcse pack review <pack_id>
+```
+
 ## DSL
 
 VCSE includes a deterministic Rule/Template DSL for loading capabilities without
