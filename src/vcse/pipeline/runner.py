@@ -25,6 +25,14 @@ class PipelineError(ValueError):
     """Raised when the pipeline config or execution is invalid."""
 
 
+def _is_within_base(path: Path, base: Path) -> bool:
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 def cross_pack_reason(claims: list[dict[str, Any]], rules: list[dict[str, str]] | None = None) -> list[dict[str, Any]]:
     """Deterministic cross-pack inference with explicit provenance chaining."""
     active_rules = rules or [
@@ -175,15 +183,9 @@ class PackPipelineRunner:
                 )
             )
         except Exception as exc:
-            stages.append(
-                PipelineStageReport(
-                    stage="adapter",
-                    status="STAGE_FAILED",
-                    details={},
-                    reasons=[str(exc)],
-                )
-            )
-            reasons.append(f"adapter failed: {exc}")
+            details, reason = self._classify_stage_exception("adapter", exc, path=config.adapter_source)
+            stages.append(PipelineStageReport(stage="adapter", status="STAGE_FAILED", details=details, reasons=[reason]))
+            reasons.append(reason)
             return self._finalize(config, run_id, output_dir, stages, reasons)
 
         compile_source = output_dir / "normalized.jsonl"
@@ -207,16 +209,10 @@ class PackPipelineRunner:
                     reasons=[],
                 )
             )
-        except (CompilerError, Exception) as exc:
-            stages.append(
-                PipelineStageReport(
-                    stage="compiler",
-                    status="STAGE_FAILED",
-                    details={},
-                    reasons=[str(exc)],
-                )
-            )
-            reasons.append(f"compiler failed: {exc}")
+        except Exception as exc:
+            details, reason = self._classify_stage_exception("compiler", exc, path=compile_source)
+            stages.append(PipelineStageReport(stage="compiler", status="STAGE_FAILED", details=details, reasons=[reason]))
+            reasons.append(reason)
             return self._finalize(config, run_id, output_dir, stages, reasons)
 
         try:
@@ -228,8 +224,9 @@ class PackPipelineRunner:
             }
             stages.append(PipelineStageReport(stage="index", status="STAGE_PASSED", details=details, reasons=[]))
         except Exception as exc:
-            stages.append(PipelineStageReport(stage="index", status="STAGE_FAILED", details={}, reasons=[str(exc)]))
-            reasons.append(f"index failed: {exc}")
+            details, reason = self._classify_stage_exception("index", exc, path=config.compiler_output_root)
+            stages.append(PipelineStageReport(stage="index", status="STAGE_FAILED", details=details, reasons=[reason]))
+            reasons.append(reason)
             return self._finalize(config, run_id, output_dir, stages, reasons)
 
         pack_path = config.compiler_output_root / config.compiler_pack_id
@@ -310,15 +307,22 @@ class PackPipelineRunner:
         validation = self._require_object(payload, "validation")
         runtime_store = self._require_object(payload, "runtime_store")
 
+        base_dir = Path.cwd().resolve(strict=True)
         config = PipelineConfig(
             pipeline_id=self._require_non_empty_str(payload, "pipeline_id"),
-            domain=self._repo_path(self._require_non_empty_str(payload, "domain")),
+            domain=self._resolve_safe_config_path(self._require_non_empty_str(payload, "domain"), base_dir),
             adapter_type=self._require_non_empty_str(adapter, "type"),
-            adapter_source=self._repo_path(self._require_non_empty_str(adapter, "source")),
-            compiler_mapping=self._repo_path(self._require_non_empty_str(compiler, "mapping")),
+            adapter_source=self._resolve_safe_config_path(self._require_non_empty_str(adapter, "source"), base_dir),
+            compiler_mapping=self._resolve_safe_config_path(self._require_non_empty_str(compiler, "mapping"), base_dir),
             compiler_pack_id=self._require_non_empty_str(compiler, "pack_id"),
-            compiler_output_root=self._repo_path(self._require_non_empty_str(compiler, "output_root")),
-            compiler_benchmark_output=self._repo_path(self._require_non_empty_str(compiler, "benchmark_output")),
+            compiler_output_root=self._resolve_safe_config_path(
+                self._require_non_empty_str(compiler, "output_root"),
+                base_dir,
+            ),
+            compiler_benchmark_output=self._resolve_safe_config_path(
+                self._require_non_empty_str(compiler, "benchmark_output"),
+                base_dir,
+            ),
             validation_validate_pack=bool(validation.get("validate_pack", False)),
             validation_review_pack=bool(validation.get("review_pack", False)),
             runtime_store_compile=bool(runtime_store.get("compile", False)),
@@ -351,11 +355,15 @@ class PackPipelineRunner:
             raise PipelineError(f"field '{key}' must be non-empty")
         return value
 
-    def _repo_path(self, value: str) -> Path:
-        path = Path(value)
-        if path.is_absolute():
-            raise PipelineError(f"config paths must be repo-relative: {value}")
-        return path
+    def _resolve_safe_config_path(self, raw: str, base: Path) -> Path:
+        candidate = Path(raw)
+        if candidate.is_absolute():
+            resolved = candidate.resolve(strict=False)
+        else:
+            resolved = (base / candidate).resolve(strict=False)
+        if not _is_within_base(resolved, base):
+            raise PipelineError(f"config path escapes workspace: {raw}")
+        return resolved
 
     def _validate_pack(self, pack_path: Path) -> dict[str, Any]:
         claims_path = pack_path / "claims.jsonl"
@@ -452,6 +460,35 @@ class PackPipelineRunner:
             elif next_digest != digest:
                 reasons.append(f"hidden mutation: modified existing pack artifact {rel}")
         return reasons
+
+    def _classify_stage_exception(self, stage: str, exc: Exception, *, path: Path | None = None) -> tuple[dict[str, str], str]:
+        if isinstance(exc, PipelineError):
+            code = "PIPELINE_ERROR"
+        elif isinstance(exc, CompilerError):
+            code = "COMPILER_ERROR"
+        elif isinstance(exc, json.JSONDecodeError):
+            code = "JSON_DECODE_ERROR"
+        elif isinstance(exc, FileNotFoundError):
+            code = "FILE_NOT_FOUND"
+        elif isinstance(exc, PermissionError):
+            code = "PERMISSION_DENIED"
+        elif isinstance(exc, OSError):
+            code = "OS_ERROR"
+        elif isinstance(exc, ValueError):
+            code = "VALUE_ERROR"
+        else:
+            code = "UNEXPECTED_STAGE_ERROR"
+
+        details = {
+            "error_type": code,
+            "exception_class": type(exc).__name__,
+            "message": str(exc),
+        }
+        if path is not None:
+            details["path"] = str(path)
+
+        reason = f"{stage} failed [{code}]: {exc}"
+        return details, reason
 
     def _finalize(
         self,

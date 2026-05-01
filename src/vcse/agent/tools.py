@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import math
 from typing import Any, Callable
 
 from vcse.agent.errors import UnknownToolError, ToolValidationError
@@ -12,6 +13,114 @@ from vcse.agent.validation import validate_tool_input, validate_tool_output
 
 # Tool signature: (input_dict) -> output_dict
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
+MAX_MATH_EXPRESSION_LENGTH = 256
+MAX_MATH_AST_NODES = 64
+MAX_MATH_BINARY_OPS = 32
+MAX_MATH_POWER_EXPONENT = 12
+MAX_MATH_POWER_BASE_ABS = 1_000_000
+MAX_MATH_POWER_NESTED_DEPTH = 2
+
+_ALLOWED_MATH_AST_NODES: tuple[type[ast.AST], ...] = (
+    ast.Expression,
+    ast.BinOp,
+    ast.UnaryOp,
+    ast.Constant,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.FloorDiv,
+    ast.Mod,
+    ast.Pow,
+    ast.USub,
+    ast.UAdd,
+    ast.Load,
+)
+
+
+def _validate_math_ast(tree: ast.AST) -> None:
+    node_count = 0
+    binop_count = 0
+
+    def walk(node: ast.AST, pow_depth: int) -> None:
+        nonlocal node_count, binop_count
+        node_count += 1
+        if node_count > MAX_MATH_AST_NODES:
+            raise ValueError(f"expression too complex: exceeds {MAX_MATH_AST_NODES} AST nodes")
+
+        if not isinstance(node, _ALLOWED_MATH_AST_NODES):
+            raise ValueError(f"unsupported syntax node: {type(node).__name__}")
+
+        if isinstance(node, ast.Constant):
+            if not isinstance(node.value, (int, float)):
+                raise ValueError("only numeric constants are allowed")
+            return
+
+        if isinstance(node, ast.BinOp):
+            binop_count += 1
+            if binop_count > MAX_MATH_BINARY_OPS:
+                raise ValueError(f"expression too complex: exceeds {MAX_MATH_BINARY_OPS} binary operations")
+
+            next_pow_depth = pow_depth
+            if isinstance(node.op, ast.Pow):
+                next_pow_depth = pow_depth + 1
+                if next_pow_depth > MAX_MATH_POWER_NESTED_DEPTH:
+                    raise ValueError("nested exponentiation depth exceeded")
+                if isinstance(node.right, ast.Constant):
+                    exponent = node.right.value
+                    if isinstance(exponent, (int, float)) and abs(exponent) > MAX_MATH_POWER_EXPONENT:
+                        raise ValueError(f"exponent exceeds maximum absolute value {MAX_MATH_POWER_EXPONENT}")
+                if isinstance(node.left, ast.Constant):
+                    base_value = node.left.value
+                    if isinstance(base_value, (int, float)) and abs(base_value) > MAX_MATH_POWER_BASE_ABS:
+                        raise ValueError(f"base exceeds maximum absolute value {MAX_MATH_POWER_BASE_ABS}")
+            walk(node.left, next_pow_depth)
+            walk(node.right, next_pow_depth)
+            return
+
+        if isinstance(node, ast.UnaryOp):
+            walk(node.operand, pow_depth)
+            return
+
+        for child in ast.iter_child_nodes(node):
+            walk(child, pow_depth)
+
+    walk(tree, 0)
+
+
+def _eval_math_ast(node: ast.AST) -> float:
+    if isinstance(node, ast.Expression):
+        return _eval_math_ast(node.body)
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)):
+            return float(node.value)
+        raise ValueError("only numeric constants are allowed")
+    if isinstance(node, ast.UnaryOp):
+        value = _eval_math_ast(node.operand)
+        if isinstance(node.op, ast.UAdd):
+            return value
+        if isinstance(node.op, ast.USub):
+            return -value
+        raise ValueError("unsupported unary operator")
+    if isinstance(node, ast.BinOp):
+        left = _eval_math_ast(node.left)
+        right = _eval_math_ast(node.right)
+        if isinstance(node.op, ast.Add):
+            return left + right
+        if isinstance(node.op, ast.Sub):
+            return left - right
+        if isinstance(node.op, ast.Mult):
+            return left * right
+        if isinstance(node.op, ast.Div):
+            return left / right
+        if isinstance(node.op, ast.FloorDiv):
+            return left // right
+        if isinstance(node.op, ast.Mod):
+            return left % right
+        if isinstance(node.op, ast.Pow):
+            return math.pow(left, right)
+        raise ValueError("unsupported binary operator")
+    raise ValueError(f"unsupported syntax node: {type(node).__name__}")
 
 
 class ToolRegistry:
@@ -137,6 +246,8 @@ def _handle_vcse_query(inp: dict[str, Any]) -> dict[str, Any]:
 def _handle_math_solver(inp: dict[str, Any]) -> dict[str, Any]:
     """Solve a mathematical expression."""
     expression = inp["expression"].strip()
+    if len(expression) > MAX_MATH_EXPRESSION_LENGTH:
+        raise ValueError(f"expression too long: max {MAX_MATH_EXPRESSION_LENGTH} characters")
 
     # Restrict to safe subset: integers, +, -, *, /, (), numbers, spaces
     safe_chars = set("0123456789 +-*/().")
@@ -145,10 +256,13 @@ def _handle_math_solver(inp: dict[str, Any]) -> dict[str, Any]:
 
     try:
         tree = ast.parse(expression, mode="eval")
-        result = eval(compile(tree, "<expr>", "eval"))
+        _validate_math_ast(tree)
+        result = _eval_math_ast(tree)
     except Exception as exc:
         raise ValueError(f"math evaluation failed: {exc}")
 
+    if float(result).is_integer():
+        return {"result": int(result)}
     return {"result": result}
 
 
