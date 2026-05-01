@@ -34,6 +34,19 @@ class IngestResult:
     errors: list[str] = field(default_factory=list)
     file_results: list[IngestFileResult] = field(default_factory=list)
     false_verified_count: int = 0
+    incremental: bool = False
+    status: str = "INGEST_COMPLETE"
+    delta_status: str | None = None
+    added_count: int | None = None
+    removed_count: int | None = None
+    unchanged_count: int | None = None
+    previous_row_count: int | None = None
+    current_row_count: int | None = None
+    source_changed: bool | None = None
+    mapping_changed: bool | None = None
+    previous_pack_id: str | None = None
+    current_pack_id: str | None = None
+    skipped_reason: str | None = None
 
     def to_dict(self) -> dict:
         payload = asdict(self)
