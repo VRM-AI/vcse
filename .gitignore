@@ -35,3 +35,14 @@ benchmarks/compiled_*_pipeline.jsonl
 
 # Local datasets (intentionally not tracked)
 /datasets/
+
+# Internal directives and agent-control docs
+docs/_internal/
+*_directive.txt
+*_directive.md
+analysis-directive.txt
+
+# Local VCSE generated artifacts
+.vcse/
+examples/packs/*_candidate_*
+datasets/processed/

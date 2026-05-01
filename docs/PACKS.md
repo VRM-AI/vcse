@@ -1,6 +1,6 @@
 # Capability Packs
 
-VCSE capability packs are installable, versioned VRM modules.
+VCSE capability packs are installable, versioned Correctness Model modules.
 
 A pack can include DSL artifacts, claims, constraints, templates, benchmarks,
 and gauntlet cases. Packs extend runtime behavior but do not bypass verification.
@@ -12,6 +12,7 @@ and gauntlet cases. Packs extend runtime behavior but do not bypass verification
 - Dependencies are explicit and local-only in v2.2.0.
 - Activation is deterministic.
 - Provenance is mandatory.
+- Cross-pack reasoning is deterministic.
 - Runtime without packs behaves as before.
 
 ## Manifest

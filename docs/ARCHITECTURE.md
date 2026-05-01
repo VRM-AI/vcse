@@ -1,8 +1,12 @@
 # VCSE Architecture
 
-VCSE is an LLM-free verifier-centered symbolic reasoning engine. It does not
+VCSE is a verifier-centered symbolic reasoning engine for Correctness Models (CMs). It does not
 use next-token prediction. It reasons by structured state transitions, bounded
 search, and deterministic verification.
+
+Current public milestone state:
+- v5.3: deterministic schema inference (mapping proposal path)
+- v5.4: cross-pack reasoning + global consistency checks
 
 ```text
 Input JSON / CLI demo
@@ -35,7 +39,7 @@ Input JSON / CLI demo
 - Gauntlet: adversarial benchmark runner/evaluator/metrics/reporting for
   trust validation.
 - API Adapter: OpenAI-compatible HTTP interface translating requests into
-  deterministic ask/generate/ingest VRM execution.
+  deterministic ask/generate/ingest CM execution.
 - Memory: stores claims, constraints, goals, symbol bindings, evidence, and
   contradiction indexes.
 - Proposers: produce `Transition` objects only.

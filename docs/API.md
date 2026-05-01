@@ -1,7 +1,9 @@
 # API Adapter
 
-VCSE 1.9.0 exposes an OpenAI-compatible HTTP adapter for deterministic VRM
-execution.
+VCSE 1.9.0 exposes an OpenAI-compatible HTTP adapter for deterministic Correctness Model execution.
+
+The adapter surfaces deterministic VCSE outcomes and supports multi-pack execution
+paths consistent with v5.4 cross-pack reasoning and global consistency checks.
 
 ## Important
 

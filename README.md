@@ -1,8 +1,16 @@
 # VCSE
 
-VCSE is an LLM-free verifier-centered symbolic reasoning engine. It does not use
-next-token prediction. It reasons by structured state transitions, bounded
-search, and deterministic verification.
+Verifier-Centered Symbolic Engine
+
+VCSE is the verification and reasoning engine for Correctness Models (CMs).
+
+Correctness Models are systems designed to produce outputs that are verifiably correct through explicit reasoning, validation, provenance, and controlled inference rather than probabilistic generation.
+
+LLMs provide the creative spark.
+CMs provide the logical grounding.
+
+Developed by VelariumAI.
+Hosted under the VRM-AI organization.
 
 VCSE is not a chatbot and not a wrapper around a text model. The parser extracts
 structure, memory stores state, proposers emit candidate transitions, search
@@ -20,6 +28,23 @@ state.
 
 No component predicts final text. No final answer is accepted without
 verifier-backed state support and, for verified answers, a proof trace.
+
+## Feature Coverage
+
+- explicit claims
+- provenance
+- trust tiers
+- deterministic inference
+- conflict detection
+- source adapters
+- knowledge compiler
+- autonomous ingest
+- deterministic schema inference
+- candidate pack lifecycle
+- cross-pack reasoning
+- global consistency checks
+- SQLite runtime store
+- future compiled symbolic runtime format (`.csrf`)
 
 ## Architecture
 
@@ -141,8 +166,8 @@ Automated pipeline docs: [docs/AUTOMATED_PACK_ECOSYSTEM.md](docs/AUTOMATED_PACK_
 
 VCSE conversion is explicit and mapping-driven. The mapping declares which source
 fields become `subject`, `relation`, and `object` rows, so output is
-deterministic and auditable. VCSE 5.3 will add mapping automation; in 5.2.2 the
-mapping remains explicit by design.
+deterministic and auditable. VCSE v5.3 adds deterministic schema inference with
+mapping proposals that remain reviewable and reproducible.
 
 1. Convert sample dataset into explicit triples:
 
@@ -181,6 +206,12 @@ vcse ingest datasets/raw/countries.json --auto-approve
 If `--auto-approve` is omitted and a raw schema needs mapping, VCSE writes the
 mapping artifact and exits that file with an approval-required error so you can
 inspect and reuse the mapping.
+
+## Cross-Pack Reasoning + Global Consistency (v5.4)
+
+VCSE v5.4 reasons across multiple active packs while preserving deterministic
+verification and global consistency checks. Cross-pack retrieval does not change
+truth conditions; verifiers remain authoritative.
 
 ## DSL
 
@@ -252,7 +283,7 @@ See [docs/API.md](docs/API.md).
 
 ## Capability Packs
 
-VCSE 2.2.0 adds installable capability packs for modular VRM extension.
+VCSE 2.2.0 adds installable capability packs for modular Correctness Model extension.
 
 - Validate before install
 - Local registry and local dependency resolution
