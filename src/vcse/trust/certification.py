@@ -26,6 +26,7 @@ class CertificationResult:
     conflict_count: int
     missing_provenance_count: int
     issues: tuple[CertificationIssue, ...]
+    policy_decisions: tuple[dict[str, str | None], ...] = ()
 
 
 CERTIFICATION_PASSED = "CERTIFICATION_PASSED"

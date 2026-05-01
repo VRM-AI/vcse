@@ -82,6 +82,8 @@ from vcse.packs.integrity import (
 )
 from vcse.packs.runtime_store import load_runtime_claims_if_valid, runtime_store_path_for_pack
 from vcse.perf import profile_result, profile_run
+from vcse.policy import PolicyLoadError, PolicySet
+from vcse.policy import load_policy as load_policy_set
 from vcse.ledger import LedgerError, LedgerStore, build_integrity, export_ledger, verify_ledger, verify_pack_ledger
 from vcse.renderer.explanation import ExplanationRenderer
 from vcse.trust import (
@@ -1906,12 +1908,19 @@ def _copy_pack_tree(source: Path, target: Path) -> None:
 def run_trust_certify(
     pack_spec: str,
     policy_name_or_path: str | None = None,
+    policy_file: Path | None = None,
     output_pack_id: str | None = None,
     json_output: bool = False,
 ) -> str:
     policy = _resolve_trust_policy(policy_name_or_path)
     source_path = resolve_pack_path(pack_spec)
-    result = CertificationGate.certify_pack(source_path, policy)
+    policy_set: PolicySet | None = None
+    if policy_file is not None:
+        try:
+            policy_set = load_policy_set(policy_file)
+        except PolicyLoadError as exc:
+            raise TrustError("POLICY_LOAD_FAILED", str(exc)) from exc
+    result = CertificationGate.certify_pack(source_path, policy, policy_set=policy_set)
 
     report_path: Path | None = None
     target_path = source_path
@@ -3425,6 +3434,7 @@ def main(argv: list[str] | None = None) -> None:
     trust_certify_parser = trust_subparsers.add_parser("certify")
     trust_certify_parser.add_argument("pack_id")
     trust_certify_parser.add_argument("--policy", default="default_certification")
+    trust_certify_parser.add_argument("--policy-file", type=Path, dest="policy_file")
     trust_certify_parser.add_argument("--output", dest="output_pack_id")
     trust_certify_parser.add_argument("--json", action="store_true", dest="json_output")
     trust_inspect_parser = trust_subparsers.add_parser("inspect")
@@ -3961,6 +3971,7 @@ def main(argv: list[str] | None = None) -> None:
                     run_trust_certify(
                         args.pack_id,
                         policy_name_or_path=args.policy,
+                        policy_file=args.policy_file,
                         output_pack_id=args.output_pack_id,
                         json_output=args.json_output,
                     )

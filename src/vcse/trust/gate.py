@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from vcse.conflict.detector import ConflictDetector
+from vcse.policy import PolicyEnforcer, PolicySet
 from vcse.trust.certification import (
     CERTIFICATION_BLOCKED,
     CERTIFICATION_FAILED,
@@ -20,8 +21,9 @@ from vcse.trust.policy import TrustPolicy
 
 class CertificationGate:
     @staticmethod
-    def certify_pack(pack_path: Path, policy: TrustPolicy) -> CertificationResult:
+    def certify_pack(pack_path: Path, policy: TrustPolicy, policy_set: PolicySet | None = None) -> CertificationResult:
         issues: list[CertificationIssue] = []
+        policy_decisions: list[dict[str, str | None]] = []
         claim_count = 0
         conflict_count = 0
         missing_provenance_count = 0
@@ -34,7 +36,15 @@ class CertificationGate:
                     message=f"pack path not found: {pack_path}",
                 )
             )
-            return _result(pack_path.name, policy, claim_count, conflict_count, missing_provenance_count, issues)
+            return _result(
+                pack_path.name,
+                policy,
+                claim_count,
+                conflict_count,
+                missing_provenance_count,
+                issues,
+                policy_decisions,
+            )
 
         pack_json_path = pack_path / "pack.json"
         claims_path = pack_path / "claims.jsonl"
@@ -49,11 +59,27 @@ class CertificationGate:
                 CertificationIssue(code="MISSING_PROVENANCE", severity="error", message="missing provenance.jsonl")
             )
         if issues:
-            return _result(pack_path.name, policy, claim_count, conflict_count, missing_provenance_count, issues)
+            return _result(
+                pack_path.name,
+                policy,
+                claim_count,
+                conflict_count,
+                missing_provenance_count,
+                issues,
+                policy_decisions,
+            )
 
         manifest = _safe_json_load(pack_json_path, issues, "INVALID_PACK_JSON")
         if manifest is None:
-            return _result(pack_path.name, policy, claim_count, conflict_count, missing_provenance_count, issues)
+            return _result(
+                pack_path.name,
+                policy,
+                claim_count,
+                conflict_count,
+                missing_provenance_count,
+                issues,
+                policy_decisions,
+            )
 
         pack_id = str(manifest.get("id") or manifest.get("pack_id") or pack_path.name)
         lifecycle_status = str(manifest.get("lifecycle_status", "candidate")).strip() or "candidate"
@@ -144,8 +170,32 @@ class CertificationGate:
                         claim_id=claim_id,
                         relation=relation,
                         source=source or None,
+                        )
                     )
+
+            if policy_set is not None:
+                decision = PolicyEnforcer().evaluate_relation(relation, policy_set)
+                policy_decisions.append(
+                    {
+                        "status": decision.status,
+                        "policy_id": decision.policy_id,
+                        "target_type": decision.target_type,
+                        "target": decision.target,
+                        "matched_rule_id": decision.matched_rule_id,
+                        "reason": decision.reason,
+                    }
                 )
+                if decision.status == "BLOCKED":
+                    issues.append(
+                        CertificationIssue(
+                            code="POLICY_BLOCKED_RELATION",
+                            severity="error",
+                            message=decision.reason,
+                            claim_id=claim_id,
+                            relation=relation,
+                            source=source or None,
+                        )
+                    )
 
             claim_source = str(claim.get("source_id") or source).strip()
             if (not claim_source) and (not policy.allow_missing_sources):
@@ -207,7 +257,15 @@ class CertificationGate:
                 )
             )
 
-        return _result(pack_id, policy, claim_count, conflict_count, missing_provenance_count, issues)
+        return _result(
+            pack_id,
+            policy,
+            claim_count,
+            conflict_count,
+            missing_provenance_count,
+            issues,
+            policy_decisions,
+        )
 
 
 def certification_report_payload(result: CertificationResult) -> dict[str, Any]:
@@ -221,6 +279,7 @@ def certification_report_payload(result: CertificationResult) -> dict[str, Any]:
         "conflict_count": result.conflict_count,
         "missing_provenance_count": result.missing_provenance_count,
         "issues": [asdict(issue) for issue in result.issues],
+        "policy_decisions": list(result.policy_decisions),
     }
 
 
@@ -279,6 +338,7 @@ def _result(
     conflict_count: int,
     missing_provenance_count: int,
     issues: list[CertificationIssue],
+    policy_decisions: list[dict[str, str | None]],
 ) -> CertificationResult:
     ordered = tuple(
         sorted(
@@ -308,4 +368,16 @@ def _result(
         conflict_count=conflict_count,
         missing_provenance_count=missing_provenance_count,
         issues=ordered,
+        policy_decisions=tuple(
+            sorted(
+                policy_decisions,
+                key=lambda item: (
+                    str(item.get("target_type", "")),
+                    str(item.get("target", "")),
+                    str(item.get("status", "")),
+                    str(item.get("matched_rule_id", "")),
+                    str(item.get("reason", "")),
+                ),
+            )
+        ),
     )
