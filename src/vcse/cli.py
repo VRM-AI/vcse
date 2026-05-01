@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import shutil
 import sys
 import time
 import tempfile
@@ -83,7 +84,14 @@ from vcse.packs.runtime_store import load_runtime_claims_if_valid, runtime_store
 from vcse.perf import profile_result, profile_run
 from vcse.ledger import LedgerError, LedgerStore, build_integrity, export_ledger, verify_ledger, verify_pack_ledger
 from vcse.renderer.explanation import ExplanationRenderer
-from vcse.trust import TrustError, TrustPromoter, load_policy
+from vcse.trust import (
+    CertificationGate,
+    TrustError,
+    TrustPolicy,
+    TrustPromoter,
+    certification_report_payload,
+    load_policy,
+)
 from vcse.compression.metrics import compute_metrics as compression_compute_metrics
 from vcse.compression import (
     optimize_pack,
@@ -1872,6 +1880,109 @@ def _claims_from_source_or_pack(target: Path) -> tuple[list[dict], Path]:
     raise TrustError("UNSUPPORTED_INPUT", f"expected pack dir or .jsonl file: {target}")
 
 
+def _resolve_trust_policy(policy_name_or_path: str | None) -> TrustPolicy:
+    if policy_name_or_path is None or policy_name_or_path == "default_certification":
+        return TrustPolicy()
+    policy_path = Path(policy_name_or_path)
+    if not policy_path.exists():
+        raise TrustError("POLICY_NOT_FOUND", f"policy not found: {policy_name_or_path}")
+    return load_policy(policy_path)
+
+
+def _copy_pack_tree(source: Path, target: Path) -> None:
+    if target.exists():
+        raise TrustError("PACK_EXISTS", f"output pack already exists: {target}")
+    target.mkdir(parents=True, exist_ok=False)
+    for item in sorted(source.iterdir(), key=lambda p: p.name):
+        if item.name == "runtime_store.sqlite":
+            continue
+        destination = target / item.name
+        if item.is_dir():
+            shutil.copytree(item, destination)
+        else:
+            shutil.copy2(item, destination)
+
+
+def run_trust_certify(
+    pack_spec: str,
+    policy_name_or_path: str | None = None,
+    output_pack_id: str | None = None,
+    json_output: bool = False,
+) -> str:
+    policy = _resolve_trust_policy(policy_name_or_path)
+    source_path = resolve_pack_path(pack_spec)
+    result = CertificationGate.certify_pack(source_path, policy)
+
+    report_path: Path | None = None
+    target_path = source_path
+    if output_pack_id:
+        target_path = source_path.parent / output_pack_id
+        _copy_pack_tree(source_path, target_path)
+        manifest_path = target_path / "pack.json"
+        manifest = json.loads(manifest_path.read_text())
+        source_manifest_id = str(manifest.get("id") or manifest.get("pack_id") or source_path.name)
+        manifest["id"] = output_pack_id
+        manifest["pack_id"] = output_pack_id
+        manifest["lifecycle_status"] = "certified" if result.status == "CERTIFICATION_PASSED" else "blocked"
+        manifest["certified_from"] = source_manifest_id
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+    if output_pack_id:
+        report_path = target_path / "trust_report.json"
+        report_path.write_text(json.dumps(certification_report_payload(result), indent=2, sort_keys=True) + "\n")
+
+    payload = certification_report_payload(result)
+    payload["pack_path"] = str(source_path)
+    payload["output_pack_path"] = str(target_path) if output_pack_id else None
+    payload["trust_report_path"] = str(report_path) if report_path is not None else None
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+
+    lines = [
+        f"status: {payload['status']}",
+        f"pack_id: {payload['pack_id']}",
+        f"policy_id: {payload['policy_id']}",
+        f"claim_count: {payload['claim_count']}",
+        f"certified_claim_count: {payload['certified_claim_count']}",
+        f"blocked_claim_count: {payload['blocked_claim_count']}",
+        f"conflict_count: {payload['conflict_count']}",
+        f"missing_provenance_count: {payload['missing_provenance_count']}",
+    ]
+    if report_path is not None:
+        lines.append(f"trust_report_path: {report_path}")
+    if payload["issues"]:
+        lines.append("issues:")
+        for issue in payload["issues"]:
+            lines.append(f"  - {issue['code']}: {issue['message']}")
+    return "\n".join(lines)
+
+
+def run_trust_inspect(pack_spec: str, json_output: bool = False) -> str:
+    pack_path = resolve_pack_path(pack_spec)
+    report_path = pack_path / "trust_report.json"
+    if not report_path.exists():
+        raise TrustError("MISSING_TRUST_REPORT", f"missing trust_report.json in {pack_path}")
+    payload = json.loads(report_path.read_text())
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"status: {payload.get('status', 'UNKNOWN')}",
+        f"pack_id: {payload.get('pack_id', '')}",
+        f"policy_id: {payload.get('policy_id', '')}",
+        f"claim_count: {payload.get('claim_count', 0)}",
+        f"certified_claim_count: {payload.get('certified_claim_count', 0)}",
+        f"blocked_claim_count: {payload.get('blocked_claim_count', 0)}",
+        f"conflict_count: {payload.get('conflict_count', 0)}",
+        f"missing_provenance_count: {payload.get('missing_provenance_count', 0)}",
+    ]
+    issues = list(payload.get("issues", []))
+    if issues:
+        lines.append("issues:")
+        for item in issues:
+            lines.append(f"  - {item.get('code', 'UNKNOWN')}: {item.get('message', '')}")
+    return "\n".join(lines)
+
+
 def run_trust_evaluate(target: Path, policy_path: str | None = None, json_output: bool = False) -> str:
     claims, _ = _claims_from_source_or_pack(target)
     report = TrustPromoter(policy=load_policy(policy_path)).evaluate_claims(claims)
@@ -2921,18 +3032,32 @@ def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
     return "\n".join(lines)
 
 
-def run_reason(packs_dir: Path, json_output: bool = False) -> str:
+def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = False) -> str:
     if not packs_dir.exists() or not packs_dir.is_dir():
         raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
 
-    pack_dirs = sorted(
-        [
-            path
-            for path in packs_dir.iterdir()
-            if path.is_dir() and (path / "pack.json").exists() and (path / "claims.jsonl").exists()
-        ],
+    all_pack_dirs = sorted(
+        [path for path in packs_dir.iterdir() if path.is_dir() and (path / "pack.json").exists() and (path / "claims.jsonl").exists()],
         key=lambda item: str(item),
     )
+    pack_dirs: list[Path] = []
+    skipped: list[dict[str, str]] = []
+    for path in all_pack_dirs:
+        manifest = json.loads((path / "pack.json").read_text())
+        pack_id = str(manifest.get("id") or manifest.get("pack_id") or path.name)
+        lifecycle_status = str(manifest.get("lifecycle_status", "candidate")).strip() or "candidate"
+        if trusted_only and lifecycle_status not in {"certified", "trusted"}:
+            skipped.append(
+                {
+                    "pack_id": pack_id,
+                    "path": str(path),
+                    "lifecycle_status": lifecycle_status,
+                    "reason": "pack lifecycle_status not eligible for trusted-only reasoning",
+                }
+            )
+            continue
+        pack_dirs.append(path)
+
     graph = build_global_claim_graph(pack_dirs)
     runtime_claims = [item.to_dict() for item in graph.claims]
     inferred_claims = cross_pack_reason(runtime_claims, rules=None)
@@ -2940,6 +3065,9 @@ def run_reason(packs_dir: Path, json_output: bool = False) -> str:
     payload = {
         "status": "GLOBAL_REASONING_COMPLETE",
         "pack_dir": str(packs_dir),
+        "trusted_only": trusted_only,
+        "packs_loaded": [str(path) for path in pack_dirs],
+        "packs_skipped": skipped,
         "pack_count": len(pack_dirs),
         "input_claim_count": len(runtime_claims),
         "inferred_claims": inferred_claims,
@@ -2970,6 +3098,9 @@ def run_reason(packs_dir: Path, json_output: bool = False) -> str:
     lines = [
         "status: GLOBAL_REASONING_COMPLETE",
         f"pack_dir: {packs_dir}",
+        f"trusted_only: {trusted_only}",
+        f"packs_loaded: {len(pack_dirs)}",
+        f"packs_skipped: {len(skipped)}",
         f"pack_count: {len(pack_dirs)}",
         f"input_claim_count: {len(runtime_claims)}",
         f"inferred_claim_count: {len(inferred_claims)}",
@@ -3085,6 +3216,7 @@ def main(argv: list[str] | None = None) -> None:
     reason_parser = subparsers.add_parser("reason")
     reason_parser.add_argument("--packs", required=True, type=Path, dest="packs_dir")
     reason_parser.add_argument("--json", action="store_true", dest="json_output")
+    reason_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -3284,6 +3416,14 @@ def main(argv: list[str] | None = None) -> None:
 
     trust_parser = subparsers.add_parser("trust")
     trust_subparsers = trust_parser.add_subparsers(dest="trust_command")
+    trust_certify_parser = trust_subparsers.add_parser("certify")
+    trust_certify_parser.add_argument("pack_id")
+    trust_certify_parser.add_argument("--policy", default="default_certification")
+    trust_certify_parser.add_argument("--output", dest="output_pack_id")
+    trust_certify_parser.add_argument("--json", action="store_true", dest="json_output")
+    trust_inspect_parser = trust_subparsers.add_parser("inspect")
+    trust_inspect_parser.add_argument("pack_id")
+    trust_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
     trust_eval_parser = trust_subparsers.add_parser("evaluate")
     trust_eval_parser.add_argument("target")
     trust_eval_parser.add_argument("--json", action="store_true", dest="json_output")
@@ -3560,7 +3700,7 @@ def main(argv: list[str] | None = None) -> None:
             )
             return
         if args.command == "reason":
-            print(run_reason(args.packs_dir, json_output=args.json_output))
+            print(run_reason(args.packs_dir, json_output=args.json_output, trusted_only=args.trusted_only))
             return
         if args.command == "index":
             if args.index_command == "build":
@@ -3810,6 +3950,19 @@ def main(argv: list[str] | None = None) -> None:
                 print(run_domain_validate(args.path, json_output=args.json_output))
                 return
         if args.command == "trust":
+            if args.trust_command == "certify":
+                print(
+                    run_trust_certify(
+                        args.pack_id,
+                        policy_name_or_path=args.policy,
+                        output_pack_id=args.output_pack_id,
+                        json_output=args.json_output,
+                    )
+                )
+                return
+            if args.trust_command == "inspect":
+                print(run_trust_inspect(args.pack_id, json_output=args.json_output))
+                return
             if args.trust_command == "evaluate":
                 print(run_trust_evaluate(Path(args.target), policy_path=args.policy, json_output=args.json_output))
                 return
