@@ -54,3 +54,6 @@ benchmarks/compiled_*.jsonl
 
 # compiled example packs
 examples/packs/compiled_*/
+
+# Internal engineering test tools (INTERNAL USE ONLY)
+tools/_internal/
