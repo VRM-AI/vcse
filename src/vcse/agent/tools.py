@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import ast
+import json
 import math
+import sys
 from typing import Any, Callable
 
 from vcse.agent.errors import UnknownToolError, ToolValidationError
 from vcse.agent.task import Result, ResultStatus
 from vcse.agent.validation import validate_tool_input, validate_tool_output
+
+if sys.version_info < (3, 11):
+    raise RuntimeError("VCSE requires Python 3.11+")
 
 
 # Tool signature: (input_dict) -> output_dict
@@ -36,6 +41,62 @@ _ALLOWED_MATH_AST_NODES: tuple[type[ast.AST], ...] = (
     ast.UAdd,
     ast.Load,
 )
+
+
+def _ensure_finite(value: float) -> float:
+    if not math.isfinite(value):
+        raise ValueError("math result is not finite")
+    return value
+
+
+def _resolve_numeric_constant(node: ast.AST) -> float | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        operand = _resolve_numeric_constant(node.operand)
+        if operand is None:
+            return None
+        if isinstance(node.op, ast.UAdd):
+            return _ensure_finite(operand)
+        return _ensure_finite(-operand)
+    return None
+
+
+def _eval_static_base(node: ast.AST, *, max_nodes: int = 16) -> float:
+    nodes_visited = 0
+
+    def _walk(n: ast.AST) -> float:
+        nonlocal nodes_visited
+        nodes_visited += 1
+        if nodes_visited > max_nodes:
+            raise ValueError("pow base cannot be statically bounded")
+
+        direct = _resolve_numeric_constant(n)
+        if direct is not None:
+            return _ensure_finite(direct)
+
+        if isinstance(n, ast.BinOp):
+            if isinstance(n.op, ast.Pow):
+                raise ValueError("pow base cannot be statically bounded")
+            left = _walk(n.left)
+            right = _walk(n.right)
+            if isinstance(n.op, ast.Add):
+                return _ensure_finite(left + right)
+            if isinstance(n.op, ast.Sub):
+                return _ensure_finite(left - right)
+            if isinstance(n.op, ast.Mult):
+                return _ensure_finite(left * right)
+            if isinstance(n.op, ast.Div):
+                return _ensure_finite(left / right)
+            if isinstance(n.op, ast.FloorDiv):
+                return _ensure_finite(left // right)
+            if isinstance(n.op, ast.Mod):
+                return _ensure_finite(left % right)
+            raise ValueError("pow base cannot be statically bounded")
+
+        raise ValueError("pow base cannot be statically bounded")
+
+    return _walk(node)
 
 
 def _validate_math_ast(tree: ast.AST) -> None:
@@ -66,14 +127,27 @@ def _validate_math_ast(tree: ast.AST) -> None:
                 next_pow_depth = pow_depth + 1
                 if next_pow_depth > MAX_MATH_POWER_NESTED_DEPTH:
                     raise ValueError("nested exponentiation depth exceeded")
-                if isinstance(node.right, ast.Constant):
-                    exponent = node.right.value
-                    if isinstance(exponent, (int, float)) and abs(exponent) > MAX_MATH_POWER_EXPONENT:
-                        raise ValueError(f"exponent exceeds maximum absolute value {MAX_MATH_POWER_EXPONENT}")
-                if isinstance(node.left, ast.Constant):
-                    base_value = node.left.value
-                    if isinstance(base_value, (int, float)) and abs(base_value) > MAX_MATH_POWER_BASE_ABS:
+                exponent = _resolve_numeric_constant(node.right)
+                if exponent is None:
+                    raise ValueError("exponent must be a numeric constant")
+                _ensure_finite(exponent)
+                if abs(exponent) > MAX_MATH_POWER_EXPONENT:
+                    raise ValueError(f"exponent exceeds maximum absolute value {MAX_MATH_POWER_EXPONENT}")
+
+                base_value = _resolve_numeric_constant(node.left)
+                if base_value is None:
+                    base_value = _eval_static_base(node.left)
+                    _ensure_finite(base_value)
+                    if abs(base_value) > MAX_MATH_POWER_BASE_ABS:
                         raise ValueError(f"base exceeds maximum absolute value {MAX_MATH_POWER_BASE_ABS}")
+                    raise ValueError("pow base must be a numeric constant")
+                _ensure_finite(base_value)
+                if abs(base_value) > MAX_MATH_POWER_BASE_ABS:
+                    raise ValueError(f"base exceeds maximum absolute value {MAX_MATH_POWER_BASE_ABS}")
+                if base_value == 0 and exponent < 0:
+                    raise ValueError("zero base with negative exponent is not allowed")
+                if base_value < 0 and not float(exponent).is_integer():
+                    raise ValueError("negative base with fractional exponent is not allowed")
             walk(node.left, next_pow_depth)
             walk(node.right, next_pow_depth)
             return
@@ -98,27 +172,27 @@ def _eval_math_ast(node: ast.AST) -> float:
     if isinstance(node, ast.UnaryOp):
         value = _eval_math_ast(node.operand)
         if isinstance(node.op, ast.UAdd):
-            return value
+            return _ensure_finite(value)
         if isinstance(node.op, ast.USub):
-            return -value
+            return _ensure_finite(-value)
         raise ValueError("unsupported unary operator")
     if isinstance(node, ast.BinOp):
         left = _eval_math_ast(node.left)
         right = _eval_math_ast(node.right)
         if isinstance(node.op, ast.Add):
-            return left + right
+            return _ensure_finite(left + right)
         if isinstance(node.op, ast.Sub):
-            return left - right
+            return _ensure_finite(left - right)
         if isinstance(node.op, ast.Mult):
-            return left * right
+            return _ensure_finite(left * right)
         if isinstance(node.op, ast.Div):
-            return left / right
+            return _ensure_finite(left / right)
         if isinstance(node.op, ast.FloorDiv):
-            return left // right
+            return _ensure_finite(left // right)
         if isinstance(node.op, ast.Mod):
-            return left % right
+            return _ensure_finite(left % right)
         if isinstance(node.op, ast.Pow):
-            return math.pow(left, right)
+            return _ensure_finite(math.pow(left, right))
         raise ValueError("unsupported binary operator")
     raise ValueError(f"unsupported syntax node: {type(node).__name__}")
 
@@ -260,6 +334,12 @@ def _handle_math_solver(inp: dict[str, Any]) -> dict[str, Any]:
         result = _eval_math_ast(tree)
     except Exception as exc:
         raise ValueError(f"math evaluation failed: {exc}")
+
+    _ensure_finite(result)
+    try:
+        json.dumps({"result": result}, allow_nan=False)
+    except (TypeError, ValueError):
+        raise ValueError("math result is not JSON-safe")
 
     if float(result).is_integer():
         return {"result": int(result)}
