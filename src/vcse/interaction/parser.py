@@ -20,6 +20,8 @@ from vcse.interaction.frames import (
 # Comparison operators
 COMPARISON_OPS = {">", "<", ">=", "<=", "=", "equals"}
 QUESTION_AUXILIARIES = {"can", "could", "would", "should", "does", "do", "did", "is", "are"}
+MAX_PARSE_INPUT_CHARS = 1_000_000
+MAX_PARSE_STATEMENTS = 10_000
 
 
 @dataclass
@@ -31,14 +33,28 @@ class PatternParser:
         """Parse text into frames."""
         result = FrameParseResult()
 
+        if not isinstance(text, str):
+            result.status = FrameStatus.FAILED
+            result.errors.append("Input must be a string")
+            return result
+
         # Handle empty input
         if not text or not text.strip():
             result.status = FrameStatus.FAILED
             result.errors.append("Empty input")
             return result
 
+        if len(text) > MAX_PARSE_INPUT_CHARS:
+            result.status = FrameStatus.FAILED
+            result.errors.append(f"Input exceeds max length of {MAX_PARSE_INPUT_CHARS} characters")
+            return result
+
         # Split on statements (periods, semicolons, newlines)
         statements = self._split_statements(text)
+        if len(statements) > MAX_PARSE_STATEMENTS:
+            result.status = FrameStatus.FAILED
+            result.errors.append(f"Input exceeds max statement count of {MAX_PARSE_STATEMENTS}")
+            return result
 
         all_frames = []
         for stmt_text in statements:
