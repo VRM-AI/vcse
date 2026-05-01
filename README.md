@@ -155,7 +155,13 @@ candidate packs, and never auto-certifies or merges.
 ```bash
 vcse ingest path/to/dataset --json
 vcse ingest path/to/dataset
+vcse ingest path/to/explicit.jsonl --json --incremental
+vcse ingest path/to/explicit.jsonl --json --incremental --force
 ```
+
+Incremental ingest persists local run state under `.vcse/ingest_state/` and
+emits deterministic delta summaries (`DELTA_NEW`, `DELTA_CHANGED`,
+`DELTA_NO_CHANGES`) so unchanged input can be skipped without silent behavior.
 
 See [docs/INGESTION.md](docs/INGESTION.md) and
 [docs/CAPABILITY_PACKS.md](docs/CAPABILITY_PACKS.md).
