@@ -63,6 +63,33 @@ def test_tool_registry_math_safety():
         pass
 
 
+def test_tool_registry_math_rejects_exponent_complexity_bomb():
+    reg = get_registry()
+    try:
+        reg.execute("math_solver", {"expression": "9**9**9**9"})
+        assert False, "should raise"
+    except ToolValidationError:
+        pass
+
+
+def test_tool_registry_math_rejects_oversized_input():
+    reg = get_registry()
+    try:
+        reg.execute("math_solver", {"expression": "1" * 300})
+        assert False, "should raise"
+    except ToolValidationError:
+        pass
+
+
+def test_tool_registry_math_rejects_disallowed_ast_nodes():
+    reg = get_registry()
+    try:
+        reg.execute("math_solver", {"expression": "(1).__class__"})
+        assert False, "should raise"
+    except ToolValidationError:
+        pass
+
+
 def test_tool_registry_file_read_safe_path():
     reg = get_registry()
     try:

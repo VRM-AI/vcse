@@ -141,6 +141,55 @@ def test_missing_adapter_source_fails() -> None:
         PackPipelineRunner(run_id=f"run_missing_source_{suffix}").run(cfg)
 
 
+def test_pipeline_rejects_parent_traversal_path() -> None:
+    suffix = uuid.uuid4().hex[:8]
+    source = _make_source(f"traversal_{suffix}")
+    mapping = _make_mapping(f"traversal_{suffix}")
+    cfg = _mk_config(
+        f"pipeline_parent_traversal_{suffix}",
+        mapping_path=str(mapping.relative_to(REPO_ROOT)),
+        source_path=str(source.relative_to(REPO_ROOT)),
+        pack_id=f"compiled_parent_traversal_{suffix}",
+        output_root="../outside_packs",
+        benchmark_path=f"benchmarks/compiled_parent_traversal_{suffix}.jsonl",
+    )
+    with pytest.raises(PipelineError, match="escapes workspace"):
+        PackPipelineRunner(run_id=f"run_parent_traversal_{suffix}").run(cfg)
+
+
+def test_pipeline_rejects_absolute_path_outside_workspace() -> None:
+    suffix = uuid.uuid4().hex[:8]
+    source = _make_source(f"abs_outside_{suffix}")
+    mapping = _make_mapping(f"abs_outside_{suffix}")
+    cfg = _mk_config(
+        f"pipeline_abs_outside_{suffix}",
+        mapping_path=str(mapping.relative_to(REPO_ROOT)),
+        source_path=str(source.relative_to(REPO_ROOT)),
+        pack_id=f"compiled_abs_outside_{suffix}",
+        output_root="/tmp/vcse_outside_packs",
+        benchmark_path=f"benchmarks/compiled_abs_outside_{suffix}.jsonl",
+    )
+    with pytest.raises(PipelineError, match="escapes workspace"):
+        PackPipelineRunner(run_id=f"run_abs_outside_{suffix}").run(cfg)
+
+
+def test_pipeline_allows_valid_relative_path_inside_workspace() -> None:
+    suffix = uuid.uuid4().hex[:8]
+    source = _make_source(f"inside_{suffix}")
+    mapping = _make_mapping(f"inside_{suffix}")
+    pack_id = f"compiled_inside_{suffix}"
+    cfg = _mk_config(
+        f"pipeline_inside_{suffix}",
+        mapping_path=str(mapping.relative_to(REPO_ROOT)),
+        source_path=str(source.relative_to(REPO_ROOT)),
+        pack_id=pack_id,
+        output_root="examples/packs",
+        benchmark_path=f"benchmarks/compiled_inside_{suffix}.jsonl",
+    )
+    report = PackPipelineRunner(run_id=f"run_inside_{suffix}").run(cfg)
+    assert report.status == "PIPELINE_PASSED"
+
+
 def test_compiler_failure_propagates() -> None:
     suffix = uuid.uuid4().hex[:8]
     source = _make_source(f"bad_map_{suffix}")
@@ -179,6 +228,53 @@ def test_validation_failure_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     report = PackPipelineRunner(run_id=f"run_bad_validation_{suffix}").run(cfg)
     assert report.status == "PIPELINE_FAILED"
     assert "validation failed" in report.reasons
+
+
+def test_pipeline_reports_specific_error_type_for_known_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    source = _make_source(f"known_err_{suffix}")
+    mapping = _make_mapping(f"known_err_{suffix}")
+    cfg = _mk_config(
+        f"pipeline_known_err_{suffix}",
+        mapping_path=str(mapping.relative_to(REPO_ROOT)),
+        source_path=str(source.relative_to(REPO_ROOT)),
+        pack_id=f"compiled_known_err_{suffix}",
+        output_root="examples/packs",
+        benchmark_path=f"benchmarks/compiled_known_err_{suffix}.jsonl",
+    )
+
+    def _fail_run(_self, _path: Path):
+        raise FileNotFoundError("missing adapter input")
+
+    monkeypatch.setattr("vcse.adapters.json_adapter.JSONAdapter.run", _fail_run)
+    report = PackPipelineRunner(run_id=f"run_known_err_{suffix}").run(cfg)
+    adapter_stage = next(stage for stage in report.stages if stage.stage == "adapter")
+    assert adapter_stage.details.get("error_type") == "FILE_NOT_FOUND"
+
+
+def test_pipeline_uses_unexpected_error_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    source = _make_source(f"unexpected_err_{suffix}")
+    mapping = _make_mapping(f"unexpected_err_{suffix}")
+    cfg = _mk_config(
+        f"pipeline_unexpected_err_{suffix}",
+        mapping_path=str(mapping.relative_to(REPO_ROOT)),
+        source_path=str(source.relative_to(REPO_ROOT)),
+        pack_id=f"compiled_unexpected_err_{suffix}",
+        output_root="examples/packs",
+        benchmark_path=f"benchmarks/compiled_unexpected_err_{suffix}.jsonl",
+    )
+
+    class CustomUnexpectedError(Exception):
+        pass
+
+    def _fail_run(_self, _path: Path):
+        raise CustomUnexpectedError("boom")
+
+    monkeypatch.setattr("vcse.adapters.json_adapter.JSONAdapter.run", _fail_run)
+    report = PackPipelineRunner(run_id=f"run_unexpected_err_{suffix}").run(cfg)
+    adapter_stage = next(stage for stage in report.stages if stage.stage == "adapter")
+    assert adapter_stage.details.get("error_type") == "UNEXPECTED_STAGE_ERROR"
 
 
 def test_pipeline_output_directory_contains_all_reports() -> None:

@@ -1,6 +1,5 @@
 """Tests for pattern parser."""
 
-import pytest
 from vcse.interaction.parser import PatternParser
 from vcse.interaction.frames import FrameStatus, ClaimFrame, GoalFrame, ConstraintFrame
 
@@ -72,3 +71,32 @@ def test_parse_can_socrates_die_as_goal_without_modal_in_subject():
     assert result.frames[0].subject == "socrates"
     assert result.frames[0].relation == "is_a"
     assert result.frames[0].object == "mortal"
+
+
+def test_parse_rejects_none_input_cleanly():
+    parser = PatternParser()
+    result = parser.parse(None)  # type: ignore[arg-type]
+    assert result.status == FrameStatus.FAILED
+    assert "string" in result.errors[0].lower()
+
+
+def test_parse_rejects_non_string_input_cleanly():
+    parser = PatternParser()
+    result = parser.parse(123)  # type: ignore[arg-type]
+    assert result.status == FrameStatus.FAILED
+    assert "string" in result.errors[0].lower()
+
+
+def test_parse_rejects_oversized_payload():
+    parser = PatternParser()
+    result = parser.parse("a" * 1_000_001)
+    assert result.status == FrameStatus.FAILED
+    assert "max length" in result.errors[0].lower()
+
+
+def test_parse_rejects_excessive_statement_count():
+    parser = PatternParser()
+    text = "x.\n" * 10_001
+    result = parser.parse(text)
+    assert result.status == FrameStatus.FAILED
+    assert "statement count" in result.errors[0].lower()

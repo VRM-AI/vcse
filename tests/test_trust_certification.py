@@ -224,3 +224,27 @@ def test_default_reasoning_behavior_unchanged(tmp_path: Path) -> None:
     assert payload["trusted_only"] is False
     assert len(payload["packs_loaded"]) == 2
     assert payload["packs_skipped"] == []
+
+
+def test_certification_handles_bad_encoding_as_structured_failure(tmp_path: Path) -> None:
+    pack_dir = tmp_path / "packs" / "bad_encoding"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.json").write_text(json.dumps({"id": "bad_encoding", "lifecycle_status": "candidate"}))
+    (pack_dir / "claims.jsonl").write_bytes(b"\xff\xfe\xfd")
+    (pack_dir / "provenance.jsonl").write_text("")
+
+    result = CertificationGate.certify_pack(pack_dir, TrustPolicy())
+    assert result.status in {"CERTIFICATION_BLOCKED", "CERTIFICATION_FAILED"}
+    assert any(issue.code == "CLAIMS_ENCODING_ERROR" for issue in result.issues)
+
+
+def test_certification_handles_unreadable_json_as_structured_issue(tmp_path: Path) -> None:
+    pack_dir = tmp_path / "packs" / "io_error_pack_json"
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    (pack_dir / "pack.json").mkdir()
+    (pack_dir / "claims.jsonl").write_text("")
+    (pack_dir / "provenance.jsonl").write_text("")
+
+    result = CertificationGate.certify_pack(pack_dir, TrustPolicy())
+    assert result.status in {"CERTIFICATION_BLOCKED", "CERTIFICATION_FAILED"}
+    assert any(issue.code == "PACK_IO_ERROR" for issue in result.issues)
