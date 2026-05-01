@@ -69,7 +69,13 @@ class CertificationGate:
                 policy_decisions,
             )
 
-        manifest = _safe_json_load(pack_json_path, issues, "INVALID_PACK_JSON")
+        manifest = _safe_json_load(
+            pack_json_path,
+            issues,
+            json_error_code="PACK_JSON_ERROR",
+            io_error_code="PACK_IO_ERROR",
+            encoding_error_code="PACK_ENCODING_ERROR",
+        )
         if manifest is None:
             return _result(
                 pack_path.name,
@@ -92,10 +98,22 @@ class CertificationGate:
                 )
             )
 
-        provenance_rows = _load_jsonl(provenance_path, issues, "INVALID_PROVENANCE_ROW")
+        provenance_rows = _load_jsonl(
+            provenance_path,
+            issues,
+            json_error_code="INVALID_PROVENANCE_ROW",
+            io_error_code="PROVENANCE_IO_ERROR",
+            encoding_error_code="PROVENANCE_ENCODING_ERROR",
+        )
         provenance_count = len(provenance_rows)
 
-        claims = _load_jsonl(claims_path, issues, "INVALID_CLAIM_ROW")
+        claims = _load_jsonl(
+            claims_path,
+            issues,
+            json_error_code="INVALID_CLAIM_ROW",
+            io_error_code="CLAIMS_IO_ERROR",
+            encoding_error_code="CLAIMS_ENCODING_ERROR",
+        )
         claim_count = len(claims)
 
         seen_keys: set[tuple[str, str, str]] = set()
@@ -283,33 +301,68 @@ def certification_report_payload(result: CertificationResult) -> dict[str, Any]:
     }
 
 
-def _safe_json_load(path: Path, issues: list[CertificationIssue], code: str) -> dict[str, Any] | None:
+def _safe_json_load(
+    path: Path,
+    issues: list[CertificationIssue],
+    *,
+    json_error_code: str,
+    io_error_code: str,
+    encoding_error_code: str,
+) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text())
+    except OSError as exc:
+        issues.append(CertificationIssue(code=io_error_code, severity="error", message=f"{path.name}: {exc}"))
+        return None
+    except UnicodeDecodeError as exc:
+        issues.append(CertificationIssue(code=encoding_error_code, severity="error", message=f"{path.name}: {exc}"))
+        return None
     except json.JSONDecodeError as exc:
-        issues.append(CertificationIssue(code=code, severity="error", message=f"{path.name}: {exc.msg}"))
+        issues.append(CertificationIssue(code=json_error_code, severity="error", message=f"{path.name}: {exc.msg}"))
         return None
     if not isinstance(payload, dict):
-        issues.append(CertificationIssue(code=code, severity="error", message=f"{path.name} must be an object"))
+        issues.append(
+            CertificationIssue(code=json_error_code, severity="error", message=f"{path.name} must be an object")
+        )
         return None
     return payload
 
 
-def _load_jsonl(path: Path, issues: list[CertificationIssue], code: str) -> list[dict[str, Any]]:
+def _load_jsonl(
+    path: Path,
+    issues: list[CertificationIssue],
+    *,
+    json_error_code: str,
+    io_error_code: str,
+    encoding_error_code: str,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for idx, line in enumerate(path.read_text().splitlines(), start=1):
+    try:
+        lines = path.read_text().splitlines()
+    except OSError as exc:
+        issues.append(CertificationIssue(code=io_error_code, severity="error", message=f"{path.name}: {exc}"))
+        return rows
+    except UnicodeDecodeError as exc:
+        issues.append(CertificationIssue(code=encoding_error_code, severity="error", message=f"{path.name}: {exc}"))
+        return rows
+
+    for idx, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
             payload = json.loads(line)
         except json.JSONDecodeError as exc:
             issues.append(
-                CertificationIssue(code=code, severity="error", message=f"{path.name} line {idx}: {exc.msg}")
+                CertificationIssue(code=json_error_code, severity="error", message=f"{path.name} line {idx}: {exc.msg}")
             )
             continue
         if not isinstance(payload, dict):
             issues.append(
-                CertificationIssue(code=code, severity="error", message=f"{path.name} line {idx}: must be object")
+                CertificationIssue(
+                    code=json_error_code,
+                    severity="error",
+                    message=f"{path.name} line {idx}: must be object",
+                )
             )
             continue
         rows.append(payload)
