@@ -120,6 +120,7 @@ from vcse.pipeline.runner import PipelineError
 from vcse.pipeline.runner import cross_pack_reason
 from vcse.reasoning.global_graph import build_global_claim_graph
 from vcse.identity.normalizer import normalize_entity
+from vcse.query import StructuredQuery, StructuredQueryEngine
 
 
 def build_logic_demo_state() -> WorldStateMemory:
@@ -3211,6 +3212,80 @@ def run_reason(
     return "\n".join(lines)
 
 
+def run_query(
+    *,
+    pack_ref: str | None = None,
+    packs_dir: Path | None = None,
+    subject: str | None = None,
+    relation: str | None = None,
+    object_value: str | None = None,
+    trusted_only: bool = False,
+    policy_file: Path | None = None,
+    include_provenance: bool = True,
+    include_inferred: bool = False,
+    limit: int | None = None,
+    json_output: bool = False,
+) -> str:
+    if not any([subject, relation, object_value]):
+        raise ValueError("MISSING_QUERY_FILTER: provide at least one of --subject, --relation, --object")
+    if pack_ref is None and packs_dir is None:
+        raise ValueError("MISSING_QUERY_SCOPE: provide --pack or --packs")
+    if pack_ref is not None and packs_dir is not None:
+        raise ValueError("INVALID_QUERY_SCOPE: choose either --pack or --packs")
+
+    query = StructuredQuery(
+        subject=subject,
+        relation=relation,
+        object=object_value,
+        pack_id=pack_ref if packs_dir is not None else None,
+        trusted_only=trusted_only,
+        policy_file=str(policy_file) if policy_file is not None else None,
+        include_provenance=include_provenance,
+        include_inferred=include_inferred,
+        limit=limit,
+    )
+    engine = StructuredQueryEngine()
+    if pack_ref is not None and packs_dir is None:
+        result = engine.query_pack(_resolve_pack_reference(pack_ref), query)
+    else:
+        result = engine.query_packs(packs_dir or Path("."), query)
+
+    payload = {
+        "status": result.status,
+        "result_count": result.result_count,
+        "results": list(result.results),
+        "packs_searched": list(result.packs_searched),
+        "packs_skipped": list(result.packs_skipped),
+        "rows_examined": result.rows_examined,
+        "filters_applied": list(result.filters_applied),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+
+    lines = [
+        f"status: {result.status}",
+        f"result_count: {result.result_count}",
+        f"rows_examined: {result.rows_examined}",
+        f"packs_searched: {', '.join(result.packs_searched) if result.packs_searched else 'none'}",
+        f"packs_skipped: {', '.join(result.packs_skipped) if result.packs_skipped else 'none'}",
+        f"filters_applied: {', '.join(result.filters_applied) if result.filters_applied else 'none'}",
+        "results:",
+    ]
+    if not result.results:
+        lines.append("  - none")
+        return "\n".join(lines)
+
+    for row in result.results:
+        lines.append(
+            "  - "
+            f"{row.get('subject', '')} {row.get('relation', '')} {row.get('object', '')} "
+            f"(pack_id={row.get('pack_id', '')}, claim_id={row.get('claim_id', '')})"
+        )
+        if include_provenance:
+            lines.append(f"    provenance: {json.dumps(row.get('provenance'))}")
+    return "\n".join(lines)
+
+
 def run_policy_inspect(policy_file: Path, json_output: bool = False) -> str:
     try:
         policy = load_policy_set(policy_file)
@@ -3377,6 +3452,25 @@ def main(argv: list[str] | None = None) -> None:
     reason_parser.add_argument("--json", action="store_true", dest="json_output")
     reason_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
     reason_parser.add_argument("--policy", type=Path, dest="policy_file")
+
+    query_parser = subparsers.add_parser("query")
+    query_parser.add_argument("--pack")
+    query_parser.add_argument("--packs", type=Path)
+    query_parser.add_argument("--subject")
+    query_parser.add_argument("--relation")
+    query_parser.add_argument("--object", dest="object_value")
+    query_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
+    query_parser.add_argument("--policy", type=Path, dest="policy_file")
+    query_parser.add_argument(
+        "--include-provenance",
+        dest="include_provenance",
+        action="store_true",
+        default=True,
+    )
+    query_parser.add_argument("--no-provenance", dest="include_provenance", action="store_false")
+    query_parser.add_argument("--include-inferred", action="store_true", dest="include_inferred")
+    query_parser.add_argument("--limit", type=int)
+    query_parser.add_argument("--json", action="store_true", dest="json_output")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -3885,6 +3979,23 @@ def main(argv: list[str] | None = None) -> None:
                     json_output=args.json_output,
                     trusted_only=args.trusted_only,
                     policy_file=args.policy_file,
+                )
+            )
+            return
+        if args.command == "query":
+            print(
+                run_query(
+                    pack_ref=args.pack,
+                    packs_dir=args.packs,
+                    subject=args.subject,
+                    relation=args.relation,
+                    object_value=args.object_value,
+                    trusted_only=args.trusted_only,
+                    policy_file=args.policy_file,
+                    include_provenance=args.include_provenance,
+                    include_inferred=args.include_inferred,
+                    limit=args.limit,
+                    json_output=args.json_output,
                 )
             )
             return
