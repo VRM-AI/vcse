@@ -82,7 +82,7 @@ from vcse.packs.integrity import (
 )
 from vcse.packs.runtime_store import load_runtime_claims_if_valid, runtime_store_path_for_pack
 from vcse.perf import profile_result, profile_run
-from vcse.policy import PolicyLoadError, PolicySet
+from vcse.policy import DEFAULT_POLICY, PolicyEnforcer, PolicyLoadError, PolicySet
 from vcse.policy import load_policy as load_policy_set
 from vcse.ledger import LedgerError, LedgerStore, build_integrity, export_ledger, verify_ledger, verify_pack_ledger
 from vcse.renderer.explanation import ExplanationRenderer
@@ -3041,7 +3041,12 @@ def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
     return "\n".join(lines)
 
 
-def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = False) -> str:
+def run_reason(
+    packs_dir: Path,
+    json_output: bool = False,
+    trusted_only: bool = False,
+    policy_file: Path | None = None,
+) -> str:
     if not packs_dir.exists() or not packs_dir.is_dir():
         raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
 
@@ -3067,18 +3072,48 @@ def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = 
             continue
         pack_dirs.append(path)
 
+    active_policy = DEFAULT_POLICY
+    if policy_file is not None:
+        try:
+            active_policy = load_policy_set(policy_file)
+        except PolicyLoadError as exc:
+            raise TrustError("POLICY_LOAD_FAILED", str(exc)) from exc
+
     graph = build_global_claim_graph(pack_dirs)
-    runtime_claims = [item.to_dict() for item in graph.claims]
+    policy_enforcer = PolicyEnforcer()
+    runtime_claims: list[dict] = []
+    blocked_claim_count = 0
+    policy_decisions: list[dict[str, str | None]] = []
+    for item in graph.claims:
+        claim = item.to_dict()
+        decision = policy_enforcer.evaluate_claim(claim, active_policy)
+        policy_decisions.append(
+            {
+                "status": decision.status,
+                "policy_id": decision.policy_id,
+                "target_type": decision.target_type,
+                "target": decision.target,
+                "matched_rule_id": decision.matched_rule_id,
+                "reason": decision.reason,
+            }
+        )
+        if decision.status == "BLOCKED":
+            blocked_claim_count += 1
+            continue
+        runtime_claims.append(claim)
     inferred_claims = cross_pack_reason(runtime_claims, rules=None)
     conflicts = ConflictDetector().detect_global_conflicts(runtime_claims + inferred_claims)
     payload = {
         "status": "GLOBAL_REASONING_COMPLETE",
         "pack_dir": str(packs_dir),
         "trusted_only": trusted_only,
+        "policy_id": active_policy.policy_id,
         "packs_loaded": [str(path) for path in pack_dirs],
         "packs_skipped": skipped,
         "pack_count": len(pack_dirs),
         "input_claim_count": len(runtime_claims),
+        "blocked_claim_count": blocked_claim_count,
+        "policy_decisions": policy_decisions,
         "inferred_claims": inferred_claims,
         "conflicts": [
             {
@@ -3108,10 +3143,12 @@ def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = 
         "status: GLOBAL_REASONING_COMPLETE",
         f"pack_dir: {packs_dir}",
         f"trusted_only: {trusted_only}",
+        f"policy_id: {active_policy.policy_id}",
         f"packs_loaded: {len(pack_dirs)}",
         f"packs_skipped: {len(skipped)}",
         f"pack_count: {len(pack_dirs)}",
         f"input_claim_count: {len(runtime_claims)}",
+        f"blocked_claim_count: {blocked_claim_count}",
         f"inferred_claim_count: {len(inferred_claims)}",
         f"conflict_count: {len(conflicts)}",
     ]
@@ -3131,6 +3168,70 @@ def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = 
                 f"  - {item['pack_id']} ({item['lifecycle_status']}): {item['reason']}"
             )
     return "\n".join(lines)
+
+
+def run_policy_inspect(policy_file: Path, json_output: bool = False) -> str:
+    try:
+        policy = load_policy_set(policy_file)
+    except PolicyLoadError as exc:
+        raise TrustError("POLICY_LOAD_FAILED", str(exc)) from exc
+    payload = {
+        "policy_id": policy.policy_id,
+        "description": policy.description,
+        "default_effect": policy.default_effect,
+        "rule_count": len(policy.rules),
+        "rules": [
+            {
+                "rule_id": rule.rule_id,
+                "effect": rule.effect,
+                "target_type": rule.target_type,
+                "target": rule.target,
+                "reason": rule.reason,
+            }
+            for rule in policy.rules
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        "status: POLICY_INSPECTED",
+        f"policy_id: {payload['policy_id']}",
+        f"default_effect: {payload['default_effect']}",
+        f"rule_count: {payload['rule_count']}",
+    ]
+    if payload["rules"]:
+        lines.append("rules:")
+        for rule in payload["rules"]:
+            lines.append(f"  - {rule['rule_id']}: {rule['effect']} {rule['target_type']}={rule['target']}")
+    return "\n".join(lines)
+
+
+def run_policy_evaluate(policy_file: Path, relation: str, json_output: bool = False) -> str:
+    try:
+        policy = load_policy_set(policy_file)
+    except PolicyLoadError as exc:
+        raise TrustError("POLICY_LOAD_FAILED", str(exc)) from exc
+    decision = PolicyEnforcer().evaluate_relation(relation, policy)
+    payload = {
+        "status": decision.status,
+        "policy_id": decision.policy_id,
+        "target_type": decision.target_type,
+        "target": decision.target,
+        "matched_rule_id": decision.matched_rule_id,
+        "reason": decision.reason,
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            f"status: {payload['status']}",
+            f"policy_id: {payload['policy_id']}",
+            f"target_type: {payload['target_type']}",
+            f"target: {payload['target']}",
+            f"matched_rule_id: {payload['matched_rule_id'] or ''}",
+            f"reason: {payload['reason']}",
+        ]
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -3232,6 +3333,7 @@ def main(argv: list[str] | None = None) -> None:
     reason_parser.add_argument("--packs", required=True, type=Path, dest="packs_dir")
     reason_parser.add_argument("--json", action="store_true", dest="json_output")
     reason_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
+    reason_parser.add_argument("--policy", type=Path, dest="policy_file")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -3459,6 +3561,16 @@ def main(argv: list[str] | None = None) -> None:
     trust_stale_parser = trust_subparsers.add_parser("stale")
     trust_stale_parser.add_argument("target")
     trust_stale_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    policy_parser = subparsers.add_parser("policy")
+    policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
+    policy_inspect_parser = policy_subparsers.add_parser("inspect")
+    policy_inspect_parser.add_argument("policy_file", type=Path)
+    policy_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+    policy_evaluate_parser = policy_subparsers.add_parser("evaluate")
+    policy_evaluate_parser.add_argument("--policy", required=True, type=Path, dest="policy_file")
+    policy_evaluate_parser.add_argument("--relation", required=True)
+    policy_evaluate_parser.add_argument("--json", action="store_true", dest="json_output")
 
     infer_parser = subparsers.add_parser("infer")
     infer_subparsers = infer_parser.add_subparsers(dest="infer_command")
@@ -3716,7 +3828,14 @@ def main(argv: list[str] | None = None) -> None:
             )
             return
         if args.command == "reason":
-            print(run_reason(args.packs_dir, json_output=args.json_output, trusted_only=args.trusted_only))
+            print(
+                run_reason(
+                    args.packs_dir,
+                    json_output=args.json_output,
+                    trusted_only=args.trusted_only,
+                    policy_file=args.policy_file,
+                )
+            )
             return
         if args.command == "index":
             if args.index_command == "build":
@@ -4002,6 +4121,13 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if args.trust_command == "stale":
                 print(run_trust_stale(Path(args.target), json_output=args.json_output))
+                return
+        if args.command == "policy":
+            if args.policy_command == "inspect":
+                print(run_policy_inspect(args.policy_file, json_output=args.json_output))
+                return
+            if args.policy_command == "evaluate":
+                print(run_policy_evaluate(args.policy_file, args.relation, json_output=args.json_output))
                 return
         if args.command == "infer":
             if args.infer_command == "inverse":
