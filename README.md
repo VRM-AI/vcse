@@ -106,6 +106,8 @@ vcse adapter run --type json --source examples/knowledge/general_world_expanded.
 vcse compile knowledge --adapter json --source examples/knowledge/general_world_expanded.json --mapping examples/compiler/geography_mapping.json --domain domains/geography.yaml --pack-id compiled_geography_v49 --output-root examples/packs --json
 vcse pipeline run examples/pipelines/geography_compile.yaml --run-id test_geography_pipeline --json
 vcse pipeline inspect test_geography_pipeline --json
+vcse query --pack general_world --subject France --relation has_capital --json
+vcse query --packs examples/packs --relation has_capital --object Paris --json
 
 ## CAKE — Knowledge Acquisition
 
@@ -137,6 +139,22 @@ Example JSON input:
 
 Benchmark files are JSONL. Each case may include `expected_status` and
 `expected_answer`.
+
+## Structured Query (v5.8)
+
+`vcse query` is a deterministic retrieval interface over pack claims.
+
+- Query retrieves existing claims only; it does not mutate state.
+- Query does not perform fuzzy matching, embeddings, or LLM inference.
+- `ask` remains the user-facing reasoning path; `query` is structured access.
+
+Examples:
+
+```bash
+vcse query --pack general_world --subject France --relation has_capital --json
+vcse query --packs examples/packs --relation has_capital --object Paris --json
+vcse query --packs examples/packs --trusted-only --subject Socrates --json
+```
 
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl

@@ -20,6 +20,15 @@ VCSE still returns verifier-grounded states such as:
 
 No probabilistic sampling is used.
 
+## Structured Query CLI
+
+VCSE v5.8.0 adds `vcse query` as a deterministic structured retrieval surface.
+
+- Retrieval only: no mutation, no fuzzy matching, no embeddings, no LLM logic.
+- Supports subject/relation/object filters, reverse lookup, pack scope,
+  trusted-only pack filtering, and policy-filtered relation blocking.
+- JSON output is stable for downstream UI/chatbot integrations.
+
 ## Endpoints
 
 - `GET /health`

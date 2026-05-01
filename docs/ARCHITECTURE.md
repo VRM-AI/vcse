@@ -7,6 +7,7 @@ search, and deterministic verification.
 Current public milestone state:
 - v5.3: deterministic schema inference (mapping proposal path)
 - v5.4: cross-pack reasoning + global consistency checks
+- v5.8: structured deterministic query retrieval layer
 
 ```text
 Input JSON / CLI demo
@@ -77,4 +78,6 @@ Input JSON / CLI demo
 - DSL artifacts format behavior only; verifier remains the final authority.
 - Retrieval is optimization only; it may prioritize/deprioritize candidates but
   must not change truth conditions.
+- Structured query is deterministic claim retrieval only and does not trigger
+  broad inference or mutate packs/runtime stores.
 - Generated artifacts are accepted only after deterministic evaluation.
