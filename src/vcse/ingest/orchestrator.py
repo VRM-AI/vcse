@@ -8,6 +8,17 @@ from pathlib import Path
 from vcse.adapters import get_adapter
 from vcse.conflict.detector import ConflictDetector
 from vcse.identity.normalizer import normalize_entity
+from vcse.ingest.delta import (
+    IncrementalIngestResult,
+    IngestDelta,
+    IncrementalSupportError,
+    compute_delta,
+    compute_fingerprint,
+    ensure_incremental_supported,
+    load_previous_state_for_source,
+    normalized_row_hash,
+    write_ingest_state,
+)
 from vcse.ingest.detector import detect_source_files
 from vcse.ingest.models import IngestFileResult, IngestResult
 from vcse.ingest.report import persist_ingest_report
@@ -28,7 +39,13 @@ class _CompiledClaims:
     duplicate_entity_count: int
 
 
-def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False) -> IngestResult:
+def run_ingest(
+    path: Path,
+    run_id: str | None = None,
+    auto_approve: bool = False,
+    incremental: bool = False,
+    force: bool = False,
+) -> IngestResult:
     target = Path(path)
     if not target.exists():
         raise IngestError("INVALID_PATH", f"path not found: {target}")
@@ -46,6 +63,13 @@ def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False
     total_entities = 0
     total_duplicate_entities = 0
 
+    if incremental and len(files) > 1:
+        raise IngestError("INCREMENTAL_MULTI_SOURCE_UNSUPPORTED", "incremental mode currently supports one source file")
+
+    incremental_result: IncrementalIngestResult | None = None
+    previous_pack_id: str | None = None
+    current_pack_id: str | None = None
+
     for source_file in files:
         adapter_type = source_file.suffix.lower().lstrip(".")
         try:
@@ -57,24 +81,63 @@ def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False
                 rows=rows,
                 auto_approve=auto_approve,
             )
+            explicit_row_hashes = sorted(normalized_row_hash(row) for row in rows)
             compiled = _compile_rows(rows)
-            pack_id = _build_pack_id(source_file, run_token, used_pack_ids)
-            pack_path = _pack_path(pack_id)
-            if pack_path.exists():
-                raise IngestError("PACK_EXISTS", f"pack already exists: {pack_path}")
+            should_generate_pack = True
+            delta = IngestDelta(
+                added_count=0,
+                removed_count=0,
+                unchanged_count=0,
+                previous_row_count=0,
+                current_row_count=0,
+                source_changed=False,
+                mapping_changed=False,
+                status="DELTA_NEW",
+            )
+            if incremental:
+                try:
+                    ensure_incremental_supported(source_file, adapter_type)
+                except IncrementalSupportError as exc:
+                    raise IngestError("INCREMENTAL_UNSUPPORTED_SOURCE", exc.reason) from exc
+                fingerprint = compute_fingerprint(source_file, inference_info["mapping_path"])
+                previous_state = load_previous_state_for_source(fingerprint.source_path)
+                previous_pack_id = previous_state.get("last_pack_id") if previous_state else None
+                delta = compute_delta(previous_state, fingerprint, explicit_row_hashes)
+                if delta.status == "DELTA_NO_CHANGES" and not force:
+                    should_generate_pack = False
+                    incremental_result = IncrementalIngestResult(
+                        status="INGEST_NO_CHANGES",
+                        run_id=run_token,
+                        delta=delta,
+                        pack_created=None,
+                        skipped=True,
+                        reason="No explicit row changes detected",
+                    )
 
-            conflicts = ConflictDetector().detect(compiled.claims)
-            _write_candidate_pack(pack_path, pack_id, compiled.claims, conflicts)
-            _validate_pack(pack_path)
+            if should_generate_pack:
+                pack_id = _build_pack_id(source_file, run_token, used_pack_ids)
+                pack_path = _pack_path(pack_id)
+                if pack_path.exists():
+                    raise IngestError("PACK_EXISTS", f"pack already exists: {pack_path}")
+
+                conflicts = ConflictDetector().detect(compiled.claims)
+                _write_candidate_pack(pack_path, pack_id, compiled.claims, conflicts)
+                _validate_pack(pack_path)
+                current_pack_id = pack_id
+            else:
+                pack_id = None
+                conflicts = []
 
             conflict_count = len(conflicts)
             claim_count = len(compiled.claims)
-            total_claims += claim_count
-            total_conflicts += conflict_count
+            if should_generate_pack:
+                total_claims += claim_count
+                total_conflicts += conflict_count
             total_entities += compiled.canonical_entity_count
             total_duplicate_entities += compiled.duplicate_entity_count
-            packs_created.append(pack_id)
-            used_pack_ids.add(pack_id)
+            if pack_id is not None:
+                packs_created.append(pack_id)
+                used_pack_ids.add(pack_id)
             file_results.append(
                 IngestFileResult(
                     source_file=str(source_file),
@@ -90,6 +153,24 @@ def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False
                     ignored_fields=inference_info["ignored_fields"],
                 )
             )
+
+            if incremental:
+                if incremental_result is None:
+                    incremental_result = IncrementalIngestResult(
+                        status="INGEST_INCREMENTAL_COMPLETE",
+                        run_id=run_token,
+                        delta=delta,
+                        pack_created=pack_id,
+                        skipped=False,
+                        reason="Delta detected and candidate pack generated" if delta.status != "DELTA_NO_CHANGES" else "Forced regeneration",
+                    )
+                fingerprint = compute_fingerprint(source_file, inference_info["mapping_path"])
+                write_ingest_state(
+                    fingerprint=fingerprint,
+                    explicit_row_hashes=explicit_row_hashes,
+                    last_pack_id=pack_id or previous_pack_id,
+                    last_run_id=run_token,
+                )
         except Exception as exc:  # noqa: BLE001
             reason = str(exc)
             errors.append(f"{source_file}: {reason}")
@@ -115,6 +196,19 @@ def run_ingest(path: Path, run_id: str | None = None, auto_approve: bool = False
         errors=errors,
         file_results=file_results,
         false_verified_count=0,
+        incremental=incremental,
+        status=(incremental_result.status if incremental and incremental_result else "INGEST_COMPLETE"),
+        delta_status=(incremental_result.delta.status if incremental and incremental_result else None),
+        added_count=(incremental_result.delta.added_count if incremental and incremental_result else None),
+        removed_count=(incremental_result.delta.removed_count if incremental and incremental_result else None),
+        unchanged_count=(incremental_result.delta.unchanged_count if incremental and incremental_result else None),
+        previous_row_count=(incremental_result.delta.previous_row_count if incremental and incremental_result else None),
+        current_row_count=(incremental_result.delta.current_row_count if incremental and incremental_result else None),
+        source_changed=(incremental_result.delta.source_changed if incremental and incremental_result else None),
+        mapping_changed=(incremental_result.delta.mapping_changed if incremental and incremental_result else None),
+        previous_pack_id=previous_pack_id,
+        current_pack_id=current_pack_id,
+        skipped_reason=(incremental_result.reason if incremental and incremental_result and incremental_result.skipped else None),
     )
     persist_ingest_report(result)
     return result
