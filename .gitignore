@@ -46,3 +46,11 @@ analysis-directive.txt
 .vcse/
 examples/packs/*_candidate_*
 datasets/processed/
+# test/optimizer artifacts
+tests/**/pack.json
+
+# compiled benchmark outputs
+benchmarks/compiled_*.jsonl
+
+# compiled example packs
+examples/packs/compiled_*/
