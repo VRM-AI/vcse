@@ -16,6 +16,7 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.30",
   "cryptography>=42.0",
+  "PyYAML>=6.0",
 ]
 keywords = ["symbolic-reasoning", "verification", "search", "constraints"]
 classifiers = [
