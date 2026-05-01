@@ -9,6 +9,14 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class TrustPolicy:
+    policy_id: str = "default_certification"
+    min_trust_tier: int = 1
+    require_provenance: bool = True
+    allow_conflicts: bool = False
+    allow_missing_sources: bool = False
+    allowed_pack_statuses: tuple[str, ...] = ("candidate", "reviewed")
+    allowed_relations: tuple[str, ...] | None = None
+    blocked_relations: tuple[str, ...] | None = None
     source_trust_threshold: float = 0.7
     min_independent_sources: int = 2
     require_verifier_consistency: bool = True
@@ -33,7 +41,22 @@ def load_policy(path: str | Path | None) -> TrustPolicy:
     if path is None:
         return TrustPolicy()
     payload = json.loads(Path(path).read_text())
+    allowed_pack_statuses = payload.get("allowed_pack_statuses", ("candidate", "reviewed"))
+    allowed_relations = payload.get("allowed_relations")
+    blocked_relations = payload.get("blocked_relations")
     return TrustPolicy(
+        policy_id=str(payload.get("policy_id", "default_certification")),
+        min_trust_tier=int(payload.get("min_trust_tier", 1)),
+        require_provenance=bool(payload.get("require_provenance", True)),
+        allow_conflicts=bool(payload.get("allow_conflicts", False)),
+        allow_missing_sources=bool(payload.get("allow_missing_sources", False)),
+        allowed_pack_statuses=tuple(str(item) for item in allowed_pack_statuses),
+        allowed_relations=None
+        if allowed_relations is None
+        else tuple(sorted(str(item).strip() for item in allowed_relations if str(item).strip())),
+        blocked_relations=None
+        if blocked_relations is None
+        else tuple(sorted(str(item).strip() for item in blocked_relations if str(item).strip())),
         source_trust_threshold=float(payload.get("source_trust_threshold", 0.7)),
         min_independent_sources=int(payload.get("min_independent_sources", 2)),
         require_verifier_consistency=bool(payload.get("require_verifier_consistency", True)),
