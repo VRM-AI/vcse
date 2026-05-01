@@ -106,6 +106,15 @@ jobs:
           print("coverage and telemetry checks passed")
           PY
 
+      - name: Clean generated acceptance artifacts
+        run: |
+          git restore tests/**/pack.json || true
+          rm -rf .vcse
+          rm -rf examples/packs/*_candidate_*
+          rm -rf examples/packs/compiled_*
+          rm -f benchmarks/compiled_*.jsonl
+          git status --short
+
       - name: Enforce clean working tree
         run: git diff --exit-code
 

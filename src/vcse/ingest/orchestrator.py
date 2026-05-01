@@ -446,4 +446,4 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 def _timestamp_token() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
