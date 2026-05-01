@@ -1,0 +1,21 @@
+{
+  "policy_id": "geography_safe_policy",
+  "description": "Allows geography relations and blocks unsupported relations.",
+  "default_effect": "block",
+  "rules": [
+    {
+      "rule_id": "allow_capital",
+      "effect": "allow",
+      "target_type": "relation",
+      "target": "has_capital",
+      "reason": "Capital relation allowed."
+    },
+    {
+      "rule_id": "allow_region",
+      "effect": "allow",
+      "target_type": "relation",
+      "target": "located_in_region",
+      "reason": "Region relation allowed."
+    }
+  ]
+}
