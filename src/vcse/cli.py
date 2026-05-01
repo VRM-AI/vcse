@@ -3115,6 +3115,12 @@ def run_reason(packs_dir: Path, json_output: bool = False, trusted_only: bool = 
             )
     else:
         lines.append("inferred_claims: none")
+    if skipped:
+        lines.append("skipped_packs:")
+        for item in skipped:
+            lines.append(
+                f"  - {item['pack_id']} ({item['lifecycle_status']}): {item['reason']}"
+            )
     return "\n".join(lines)
 
 
