@@ -1,6 +1,6 @@
 # No-LLM Policy
 
-VCSE is an LLM-free verifier-centered symbolic reasoning engine. It does not
+VCSE is a verification and reasoning engine for Correctness Models (CMs). It does not
 use next-token prediction. It reasons by structured state transitions, bounded
 search, and deterministic verification.
 

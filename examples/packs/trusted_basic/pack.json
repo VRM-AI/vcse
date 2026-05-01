@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Pack with trust + ledger metadata demonstration",
   "domain": "logic",
-  "authors": ["VRM-AI"],
+  "authors": ["VelariumAI"],
   "license": "MIT",
   "created_at": "2026-04-28T00:00:00Z",
   "vcse_min_version": "2.3.0",

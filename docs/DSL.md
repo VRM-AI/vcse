@@ -6,7 +6,7 @@ editing Python core code.
 ## Purpose
 
 - Move domain growth into auditable data files.
-- Keep behavior deterministic and verifier-centered.
+- Keep behavior deterministic and correctness-centered.
 - Enable parser/normalizer/renderer/proposer/ingestion extension per command.
 
 ## Safety Rules
