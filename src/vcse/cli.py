@@ -729,13 +729,44 @@ def run_reasonops_report(path: Path) -> str:
     return generate_report(path)
 
 
-def run_ingest(path: Path, json_output: bool = False, auto_approve: bool = False) -> str:
-    result = run_autonomous_ingest(path=path, auto_approve=auto_approve)
+def run_ingest(
+    path: Path,
+    json_output: bool = False,
+    auto_approve: bool = False,
+    incremental: bool = False,
+    force: bool = False,
+) -> str:
+    result = run_autonomous_ingest(
+        path=path,
+        auto_approve=auto_approve,
+        incremental=incremental,
+        force=force,
+    )
     payload = result.to_dict()
     if json_output:
+        if incremental:
+            delta = {
+                "status": result.delta_status,
+                "added_count": result.added_count or 0,
+                "removed_count": result.removed_count or 0,
+                "unchanged_count": result.unchanged_count or 0,
+                "previous_row_count": result.previous_row_count or 0,
+                "current_row_count": result.current_row_count or 0,
+                "source_changed": bool(result.source_changed),
+                "mapping_changed": bool(result.mapping_changed),
+            }
+            payload = {
+                "status": result.status,
+                "incremental": True,
+                "delta": delta,
+                "pack_created": result.current_pack_id,
+                "previous_pack_id": result.previous_pack_id,
+                "run_id": result.run_id,
+                "errors": result.errors,
+            }
         return json.dumps(payload, sort_keys=True)
     lines = [
-        "status: INGEST_COMPLETE",
+        f"status: {result.status}",
         f"run_id: {result.run_id}",
         f"files_processed: {result.files_processed}",
         f"packs_created: {json.dumps(result.packs_created)}",
@@ -745,6 +776,16 @@ def run_ingest(path: Path, json_output: bool = False, auto_approve: bool = False
         f"total_duplicate_entities: {result.total_duplicate_entities}",
         f"false_verified_count: {result.false_verified_count}",
     ]
+    if incremental:
+        lines.append("incremental: true")
+        lines.append(f"delta_status: {result.delta_status}")
+        lines.append(f"added_count: {result.added_count or 0}")
+        lines.append(f"removed_count: {result.removed_count or 0}")
+        lines.append(f"unchanged_count: {result.unchanged_count or 0}")
+        lines.append(f"previous_pack_id: {result.previous_pack_id}")
+        lines.append(f"current_pack_id: {result.current_pack_id}")
+        if result.skipped_reason:
+            lines.append(f"skipped_reason: {result.skipped_reason}")
     if result.errors:
         lines.append("errors:")
         for item in result.errors:
@@ -3266,6 +3307,8 @@ def main(argv: list[str] | None = None) -> None:
     ingest_parser.add_argument("path")
     ingest_parser.add_argument("--json", action="store_true", dest="json_output")
     ingest_parser.add_argument("--auto-approve", action="store_true")
+    ingest_parser.add_argument("--incremental", action="store_true")
+    ingest_parser.add_argument("--force", action="store_true")
 
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("spec")
@@ -3740,7 +3783,15 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1)
             return
         if args.command == "ingest":
-            print(run_ingest(Path(args.path), json_output=args.json_output, auto_approve=args.auto_approve))
+            print(
+                run_ingest(
+                    Path(args.path),
+                    json_output=args.json_output,
+                    auto_approve=args.auto_approve,
+                    incremental=args.incremental,
+                    force=args.force,
+                )
+            )
             return
         if args.command == "generate":
             top_k_rules = args.top_k_rules if args.top_k_rules is not None else settings.top_k_rules
