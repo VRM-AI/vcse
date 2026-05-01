@@ -472,6 +472,7 @@ class PackPipelineRunner:
             conflict_count=self._extract_compile_metric(stages, "conflict_count"),
             duplicate_entity_count=self._extract_compile_metric(stages, "duplicate_entity_count"),
             canonical_entity_count=self._extract_compile_metric(stages, "canonical_entity_count"),
+            trust_summary=self._load_optional_trust_summary(config.compiler_output_root / config.compiler_pack_id),
             reasons=sorted(set(reasons)),
         )
         (output_dir / "pipeline_report.json").write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n")
@@ -495,3 +496,22 @@ class PackPipelineRunner:
                 return 0
             return int(value)
         return 0
+
+    def _load_optional_trust_summary(self, pack_path: Path) -> dict[str, object] | None:
+        trust_report_path = pack_path / "trust_report.json"
+        if not trust_report_path.exists():
+            return None
+        try:
+            payload = json.loads(trust_report_path.read_text())
+        except json.JSONDecodeError:
+            return {"status": "INVALID_TRUST_REPORT", "path": str(trust_report_path)}
+        return {
+            "status": str(payload.get("status", "")),
+            "policy_id": str(payload.get("policy_id", "")),
+            "claim_count": int(payload.get("claim_count", 0) or 0),
+            "certified_claim_count": int(payload.get("certified_claim_count", 0) or 0),
+            "blocked_claim_count": int(payload.get("blocked_claim_count", 0) or 0),
+            "conflict_count": int(payload.get("conflict_count", 0) or 0),
+            "missing_provenance_count": int(payload.get("missing_provenance_count", 0) or 0),
+            "path": str(trust_report_path),
+        }

@@ -44,6 +44,7 @@ class PipelineRunReport:
     conflict_count: int = 0
     duplicate_entity_count: int = 0
     canonical_entity_count: int = 0
+    trust_summary: dict[str, object] | None = None
     reasons: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
@@ -65,5 +66,6 @@ class PipelineRunReport:
             "conflict_count": self.conflict_count,
             "duplicate_entity_count": self.duplicate_entity_count,
             "canonical_entity_count": self.canonical_entity_count,
+            "trust_summary": self.trust_summary,
             "reasons": list(self.reasons),
         }
