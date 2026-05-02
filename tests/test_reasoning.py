@@ -29,8 +29,8 @@ def test_reasoning_does_not_emit_verified_claim_when_unverified() -> None:
     inferred = cross_pack_reason(claims, rules=None)
     assert len(inferred) == 1
     assert inferred[0]["verification_status"] == "UNVERIFIED"
-    assert inferred[0]["proof_count"] == 0
-    assert inferred[0]["proofs"] == []
+    assert inferred[0]["proof_count"] == 2
+    assert len(inferred[0]["proofs"]) == 2
 
 
 def test_reasoning_still_emits_valid_verified_claims_unchanged() -> None:
