@@ -156,6 +156,29 @@ vcse query --packs examples/packs --relation has_capital --object Paris --json
 vcse query --packs examples/packs --trusted-only --subject Socrates --json
 ```
 
+## Explanation Layer (v5.9.0)
+
+VCSE v5.9.0 adds a deterministic explanation and proof-rendering layer.
+
+- Explanations are derived from existing result rows, provenance, and proof data.
+- Explanations do not generate new facts and do not run extra inference.
+- `NO PROOF != VERIFIED` is enforced in explanation rendering.
+
+Definitions:
+
+- `result`: the retrieved or inferred claim row.
+- `provenance`: source metadata attached to claims.
+- `proof trace`: ordered evidence steps already present in VCSE outputs.
+- `explanation`: deterministic rendered structure over result + provenance + proof trace.
+- `verification_status`: explicit claim state (`VERIFIED`, `UNVERIFIED`, `FAILED`, or `UNKNOWN` where source status is absent).
+
+Examples:
+
+```bash
+vcse query --pack general_world --subject France --relation has_capital --json --explain
+vcse reason --packs examples/packs --json --explain
+```
+
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl
 vcse benchmark benchmarks/arithmetic_cases.jsonl

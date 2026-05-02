@@ -29,6 +29,22 @@ VCSE v5.8.0 adds `vcse query` as a deterministic structured retrieval surface.
   trusted-only pack filtering, and policy-filtered relation blocking.
 - JSON output is stable for downstream UI/chatbot integrations.
 
+## Explanation and Proof Rendering (v5.9.0)
+
+`vcse query` and `vcse reason` now support opt-in explanation output.
+
+- `--explain` is additive and does not change result selection.
+- Explanation payloads render only existing result/provenance/proof data.
+- Explanation rendering is deterministic and JSON-serializable.
+- Zero-proof results are rendered explicitly as `UNVERIFIED`.
+
+Examples:
+
+```bash
+vcse query --packs examples/packs --subject France --json --explain
+vcse reason --packs examples/packs --json --explain
+```
+
 ## Endpoints
 
 - `GET /health`

@@ -8,6 +8,7 @@ Current public milestone state:
 - v5.3: deterministic schema inference (mapping proposal path)
 - v5.4: cross-pack reasoning + global consistency checks
 - v5.8: structured deterministic query retrieval layer
+- v5.9: deterministic explanation + proof rendering layer
 
 ```text
 Input JSON / CLI demo
@@ -24,6 +25,7 @@ Input JSON / CLI demo
   -> search backend (Beam default, optional MCTS)
   -> verifier stack
   -> final state evaluator
+  -> explanation builder (opt-in for query/reason)
   -> deterministic renderer
 ```
 
@@ -60,6 +62,8 @@ Input JSON / CLI demo
   for tamper-evident auditing.
 - Verifiers: judge claims, constraints, contradictions, and goal satisfaction.
 - Renderer: prints evaluated state with no inference or decision logic.
+- Explanation layer: deterministic node/trace models and renderers for
+  query/reason outputs; consumes existing result/provenance/proof data only.
 - CAKE (v2.7.0): Controlled Acquisition of Knowledge Engine — deterministic
   acquisition frontend that fetches, snapshots, extracts, and routes structured
   claims into the normalization → trust → ledger → pack pipeline. Owns: source
@@ -80,4 +84,6 @@ Input JSON / CLI demo
   must not change truth conditions.
 - Structured query is deterministic claim retrieval only and does not trigger
   broad inference or mutate packs/runtime stores.
+- Explanation rendering does not fabricate proof/provenance and does not alter
+  result count or reasoning semantics.
 - Generated artifacts are accepted only after deterministic evaluation.
