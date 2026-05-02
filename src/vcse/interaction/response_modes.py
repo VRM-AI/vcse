@@ -271,6 +271,8 @@ def _render_debug(
 ) -> str:
     """Full debug output."""
     lines = [f"status: {evaluation.status.value}"]
+    lines.append(f"verification_status: {evaluation.verification_status.value}")
+    lines.append(f"proof_count: {evaluation.proof_count}")
 
     if evaluation.answer is not None:
         lines.append(f"answer: {evaluation.answer}")
@@ -340,6 +342,8 @@ def _render_strict(evaluation: FinalStateEvaluation, search_result: SearchResult
     import json
     output = {
         "status": evaluation.status.value,
+        "verification_status": evaluation.verification_status.value,
+        "proof_count": evaluation.proof_count,
         "answer": evaluation.answer,
         "proof_trace": evaluation.proof_trace,
         "reasons": evaluation.reasons,

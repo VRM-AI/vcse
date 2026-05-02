@@ -99,7 +99,12 @@ def cross_pack_reason(claims: list[dict[str, Any]], rules: list[dict[str, str]] 
                     },
                     "trust_tier": derived_trust,
                     "derived_from": derived_from,
+                    "verification_status": "UNVERIFIED",
+                    "proofs": [],
+                    "proof_count": 0,
                 }
+                if inferred["proof_count"] > 0:
+                    inferred["verification_status"] = "VERIFIED"
                 inferred["claim_id"] = _inferred_claim_id(inferred)
                 key = "|".join([subject, output_relation, obj, inferred["claim_id"]])
                 inferred_by_key[key] = inferred

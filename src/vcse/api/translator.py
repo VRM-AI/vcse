@@ -115,6 +115,8 @@ def _run_ask(
 
         debug = {
             "status": status,
+            "verification_status": evaluation.verification_status.value,
+            "proof_count": evaluation.proof_count,
             "proof_trace": proof_trace,
             "search_stats": result.stats.__dict__,
             "ts3_stats": (result.ts3_analysis.__dict__ if result.ts3_analysis else None),

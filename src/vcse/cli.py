@@ -524,9 +524,15 @@ def _render_inferred_answer(
     from vcse.verifier.final_state import FinalStateEvaluation, FinalStatus
 
     conclusion_subject, conclusion_relation, _ = inferred_explanation.conclusion
+    proof_trace = [
+        f"{step.subject} {step.relation} {step.object}"
+        for step in inferred_explanation.steps
+    ]
+    proof_trace.append(f"{conclusion_subject} {conclusion_relation} {answer_object}")
     evaluation = FinalStateEvaluation(
         status=FinalStatus.VERIFIED,
         answer=f"{conclusion_subject} {conclusion_relation} {answer_object}",
+        proof_trace=proof_trace,
     )
     return render_response(
         evaluation,
@@ -546,6 +552,8 @@ def _render_inferred_boolean(
     evaluation = FinalStateEvaluation(
         status=FinalStatus.VERIFIED,
         answer=" ".join(goal),
+        proof_trace=[f"{step.subject} {step.relation} {step.object}" for step in inferred_explanation.steps]
+        + [" ".join(goal)],
     )
     return render_response(
         evaluation,
