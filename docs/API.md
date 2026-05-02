@@ -45,6 +45,14 @@ vcse query --packs examples/packs --subject France --json --explain
 vcse reason --packs examples/packs --json --explain
 ```
 
+## CMCF and .csrf
+
+- `CMCF` = `Correctness Model Canonical Format`
+- `.csrf` = `Compiled Symbolic Runtime Format`
+
+CMCF is the canonical deterministic record format for normalized claims.
+`.csrf` is a future compiled runtime format derived from CMCF and is not the canonical truth layer.
+
 ## Endpoints
 
 - `GET /health`

@@ -179,6 +179,26 @@ vcse query --pack general_world --subject France --relation has_capital --json -
 vcse reason --packs examples/packs --json --explain
 ```
 
+## CMCF and .csrf Naming (v6.x framing)
+
+- `CMCF` = `Correctness Model Canonical Format`
+- `.csrf` = `Compiled Symbolic Runtime Format`
+
+CMCF is the canonical, deterministic claim record structure.
+
+CMCF records are:
+
+- deterministic
+- atomic
+- provenance-aware
+- status-aware
+- hashable
+- JSON-serializable
+- suitable for signing
+- suitable for later compilation into `.csrf`
+
+`.csrf` is a future compiled runtime artifact derived from CMCF; it is not canonical truth.
+
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl
 vcse benchmark benchmarks/arithmetic_cases.jsonl

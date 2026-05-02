@@ -9,6 +9,7 @@ Current public milestone state:
 - v5.4: cross-pack reasoning + global consistency checks
 - v5.8: structured deterministic query retrieval layer
 - v5.9: deterministic explanation + proof rendering layer
+- v6.0: CMCF schema/model/validation foundation
 
 ```text
 Input JSON / CLI demo
@@ -64,6 +65,8 @@ Input JSON / CLI demo
 - Renderer: prints evaluated state with no inference or decision logic.
 - Explanation layer: deterministic node/trace models and renderers for
   query/reason outputs; consumes existing result/provenance/proof data only.
+- CMCF layer: canonical deterministic record model for normalized claims
+  (`Correctness Model Canonical Format`) and validation/hashing foundation.
 - CAKE (v2.7.0): Controlled Acquisition of Knowledge Engine — deterministic
   acquisition frontend that fetches, snapshots, extracts, and routes structured
   claims into the normalization → trust → ledger → pack pipeline. Owns: source
@@ -86,4 +89,6 @@ Input JSON / CLI demo
   broad inference or mutate packs/runtime stores.
 - Explanation rendering does not fabricate proof/provenance and does not alter
   result count or reasoning semantics.
+- `.csrf` (`Compiled Symbolic Runtime Format`) is a future compiled runtime
+  artifact derived from CMCF and does not replace canonical JSONL/CMCF truth.
 - Generated artifacts are accepted only after deterministic evaluation.
