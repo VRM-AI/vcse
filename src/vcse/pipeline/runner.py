@@ -118,8 +118,6 @@ def cross_pack_reason(claims: list[dict[str, Any]], rules: list[dict[str, str]] 
                     ],
                     "proof_count": 2,
                 }
-                if inferred["proof_count"] > 0:
-                    inferred["verification_status"] = "VERIFIED"
                 inferred["claim_id"] = _inferred_claim_id(inferred)
                 key = "|".join([subject, output_relation, obj, inferred["claim_id"]])
                 inferred_by_key[key] = inferred
