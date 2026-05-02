@@ -30,7 +30,7 @@ class ExplanationRenderer:
                 lines.append(f"{index}. {step_text}{suffix}")
             if trace.verification_status == "VERIFIED":
                 lines.extend(["", "Therefore:", f"{trace.result_subject} {trace.result_relation} {trace.result_object}."])
-        else:
+        elif trace.verification_status == "UNVERIFIED":
             lines.extend(
                 [
                     "",
