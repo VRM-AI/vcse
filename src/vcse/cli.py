@@ -3323,6 +3323,75 @@ def run_query(
     return "\n".join(lines)
 
 
+def run_cmcf_validate(path: Path, json_output: bool = False) -> str:
+    from vcse.cmcf import record_from_dict, validate_record
+
+    if not path.exists():
+        raise ValueError(f"CMCF_FILE_NOT_FOUND: {path}")
+
+    text = path.read_text()
+    rows: list[dict] = []
+    stripped = text.strip()
+    if not stripped:
+        raise ValueError("CMCF_EMPTY_INPUT: expected JSON object or JSONL records")
+    if path.suffix.lower() == ".jsonl":
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            if not isinstance(payload, dict):
+                raise ValueError("CMCF_INVALID_JSONL_ROW: row must be object")
+            rows.append(payload)
+    else:
+        payload = json.loads(text)
+        if isinstance(payload, dict):
+            rows.append(payload)
+        elif isinstance(payload, list):
+            for item in payload:
+                if not isinstance(item, dict):
+                    raise ValueError("CMCF_INVALID_JSON_ARRAY_ROW: row must be object")
+                rows.append(item)
+        else:
+            raise ValueError("CMCF_INVALID_JSON_ROOT: root must be object/list")
+
+    issues_payload: list[dict[str, str]] = []
+    for idx, row in enumerate(rows, start=1):
+        record = record_from_dict(row)
+        issues = validate_record(record)
+        for issue in issues:
+            issues_payload.append(
+                {
+                    "index": str(idx),
+                    "code": issue.code,
+                    "severity": issue.severity,
+                    "message": issue.message,
+                    "path": issue.path,
+                }
+            )
+
+    status = "CMCF_VALID" if not issues_payload else "CMCF_INVALID"
+    payload = {
+        "status": status,
+        "record_count": len(rows),
+        "issue_count": len(issues_payload),
+        "issues": issues_payload,
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"status: {status}",
+        f"record_count: {len(rows)}",
+        f"issue_count: {len(issues_payload)}",
+    ]
+    if issues_payload:
+        lines.append("issues:")
+        for issue in issues_payload:
+            lines.append(
+                f"  - [{issue['index']}] {issue['code']} ({issue['severity']}) {issue['path']}: {issue['message']}"
+            )
+    return "\n".join(lines)
+
+
 def run_policy_inspect(policy_file: Path, json_output: bool = False) -> str:
     try:
         policy = load_policy_set(policy_file)
@@ -3510,6 +3579,12 @@ def main(argv: list[str] | None = None) -> None:
     query_parser.add_argument("--limit", type=int)
     query_parser.add_argument("--json", action="store_true", dest="json_output")
     query_parser.add_argument("--explain", action="store_true")
+
+    cmcf_parser = subparsers.add_parser("cmcf")
+    cmcf_subparsers = cmcf_parser.add_subparsers(dest="cmcf_command")
+    cmcf_validate_parser = cmcf_subparsers.add_parser("validate")
+    cmcf_validate_parser.add_argument("file", type=Path)
+    cmcf_validate_parser.add_argument("--json", action="store_true", dest="json_output")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -4040,6 +4115,10 @@ def main(argv: list[str] | None = None) -> None:
                 )
             )
             return
+        if args.command == "cmcf":
+            if args.cmcf_command == "validate":
+                print(run_cmcf_validate(args.file, json_output=args.json_output))
+                return
         if args.command == "index":
             if args.index_command == "build":
                 print(run_index_build(args.dsl))
