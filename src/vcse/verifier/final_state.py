@@ -15,13 +15,43 @@ class FinalStatus(str, Enum):
     UNSATISFIABLE = "UNSATISFIABLE"
 
 
+class VerificationStatus(str, Enum):
+    VERIFIED = "VERIFIED"
+    UNVERIFIED = "UNVERIFIED"
+    FAILED = "FAILED"
+
+
 @dataclass
 class FinalStateEvaluation:
     status: FinalStatus
     answer: str | None = None
     proof_trace: list[str] = field(default_factory=list)
+    verification_status: VerificationStatus = VerificationStatus.UNVERIFIED
+    proof_count: int = 0
     reasons: list[str] = field(default_factory=list)
     verifier_score: float = 0.0
+
+    def __post_init__(self) -> None:
+        # Normalize proof trace and derived proof count so callers never receive None.
+        self.proof_trace = list(self.proof_trace or [])
+        self.proof_count = len(self.proof_trace)
+        self.verification_status = self._derive_verification_status()
+        # Strict guard: never allow a VERIFIED final status without proofs.
+        if self.status == FinalStatus.VERIFIED and self.proof_count == 0:
+            self.status = FinalStatus.INCONCLUSIVE
+            if "No proof trace available" not in self.reasons:
+                self.reasons.append("No proof trace available")
+
+    @property
+    def proofs(self) -> list[str]:
+        return list(self.proof_trace)
+
+    def _derive_verification_status(self) -> VerificationStatus:
+        if self.status in {FinalStatus.CONTRADICTORY, FinalStatus.UNSATISFIABLE}:
+            return VerificationStatus.FAILED
+        if self.status == FinalStatus.VERIFIED and self.proof_count > 0:
+            return VerificationStatus.VERIFIED
+        return VerificationStatus.UNVERIFIED
 
 
 class FinalStateEvaluator:
