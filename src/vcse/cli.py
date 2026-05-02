@@ -121,6 +121,7 @@ from vcse.pipeline.runner import cross_pack_reason
 from vcse.reasoning.global_graph import build_global_claim_graph
 from vcse.identity.normalizer import normalize_entity
 from vcse.query import StructuredQuery, StructuredQueryEngine
+from vcse.explain import ExplanationBuilder, ExplanationRenderer as ProofExplanationRenderer
 
 
 def build_logic_demo_state() -> WorldStateMemory:
@@ -3096,6 +3097,7 @@ def run_reason(
     json_output: bool = False,
     trusted_only: bool = False,
     policy_file: Path | None = None,
+    explain: bool = False,
 ) -> str:
     if not packs_dir.exists() or not packs_dir.is_dir():
         raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
@@ -3187,6 +3189,9 @@ def run_reason(
             for item in inferred_claims
         ],
     }
+    if explain:
+        explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
+        payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
     if json_output:
         return json.dumps(payload, sort_keys=True)
     lines = [
@@ -3217,6 +3222,16 @@ def run_reason(
             lines.append(
                 f"  - {item['pack_id']} ({item['lifecycle_status']}): {item['reason']}"
             )
+    if explain:
+        explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
+        renderer = ProofExplanationRenderer()
+        lines.append("explanations:")
+        lines.append(f"  status: {explanation_result.status}")
+        lines.append(f"  trace_count: {explanation_result.trace_count}")
+        for trace in explanation_result.traces:
+            lines.append("  trace:")
+            for row in renderer.render_text(trace).splitlines():
+                lines.append(f"    {row}")
     return "\n".join(lines)
 
 
@@ -3233,6 +3248,7 @@ def run_query(
     include_inferred: bool = False,
     limit: int | None = None,
     json_output: bool = False,
+    explain: bool = False,
 ) -> str:
     if not any([subject, relation, object_value]):
         raise ValueError("MISSING_QUERY_FILTER: provide at least one of --subject, --relation, --object")
@@ -3267,6 +3283,9 @@ def run_query(
         "rows_examined": result.rows_examined,
         "filters_applied": list(result.filters_applied),
     }
+    if explain:
+        explanation_result = ExplanationBuilder().explain_query_results(result.results)
+        payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
     if json_output:
         return json.dumps(payload, sort_keys=True)
 
@@ -3291,6 +3310,16 @@ def run_query(
         )
         if include_provenance:
             lines.append(f"    provenance: {json.dumps(row.get('provenance'))}")
+    if explain:
+        explanation_result = ExplanationBuilder().explain_query_results(result.results)
+        renderer = ProofExplanationRenderer()
+        lines.append("explanations:")
+        lines.append(f"  status: {explanation_result.status}")
+        lines.append(f"  trace_count: {explanation_result.trace_count}")
+        for trace in explanation_result.traces:
+            lines.append("  trace:")
+            for row in renderer.render_text(trace).splitlines():
+                lines.append(f"    {row}")
     return "\n".join(lines)
 
 
@@ -3460,6 +3489,7 @@ def main(argv: list[str] | None = None) -> None:
     reason_parser.add_argument("--json", action="store_true", dest="json_output")
     reason_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
     reason_parser.add_argument("--policy", type=Path, dest="policy_file")
+    reason_parser.add_argument("--explain", action="store_true")
 
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--pack")
@@ -3479,6 +3509,7 @@ def main(argv: list[str] | None = None) -> None:
     query_parser.add_argument("--include-inferred", action="store_true", dest="include_inferred")
     query_parser.add_argument("--limit", type=int)
     query_parser.add_argument("--json", action="store_true", dest="json_output")
+    query_parser.add_argument("--explain", action="store_true")
 
     parse_parser = subparsers.add_parser("parse")
     parse_parser.add_argument("text", nargs="*", default=[])
@@ -3987,6 +4018,7 @@ def main(argv: list[str] | None = None) -> None:
                     json_output=args.json_output,
                     trusted_only=args.trusted_only,
                     policy_file=args.policy_file,
+                    explain=args.explain,
                 )
             )
             return
@@ -4004,6 +4036,7 @@ def main(argv: list[str] | None = None) -> None:
                     include_inferred=args.include_inferred,
                     limit=args.limit,
                     json_output=args.json_output,
+                    explain=args.explain,
                 )
             )
             return

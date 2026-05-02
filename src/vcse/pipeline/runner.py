@@ -100,8 +100,23 @@ def cross_pack_reason(claims: list[dict[str, Any]], rules: list[dict[str, str]] 
                     "trust_tier": derived_trust,
                     "derived_from": derived_from,
                     "verification_status": "UNVERIFIED",
-                    "proofs": [],
-                    "proof_count": 0,
+                    "proofs": [
+                        {
+                            "pack_id": str(left.get("pack_id", "")),
+                            "claim_id": str(left.get("claim_id", "")),
+                            "subject": str(left.get("subject", "")),
+                            "relation": str(left.get("relation", "")),
+                            "object": str(left.get("object", "")),
+                        },
+                        {
+                            "pack_id": str(right.get("pack_id", "")),
+                            "claim_id": str(right.get("claim_id", "")),
+                            "subject": str(right.get("subject", "")),
+                            "relation": str(right.get("relation", "")),
+                            "object": str(right.get("object", "")),
+                        },
+                    ],
+                    "proof_count": 2,
                 }
                 if inferred["proof_count"] > 0:
                     inferred["verification_status"] = "VERIFIED"
