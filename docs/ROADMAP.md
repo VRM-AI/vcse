@@ -1,100 +1,48 @@
 # VCSE Roadmap
 
-## Current System State (v5.4.0)
+## Naming Standards
 
-Completed milestones:
-- v5.0: pack system
-- v5.1: identity + conflict detection
-- v5.2: ingest system
-- v5.3: schema inference (deterministic mapping proposal)
-- v5.4: cross-pack reasoning + global consistency
-
-## Roadmap (Planned)
-
-### v5.5 - Certification + Trust Gating
-- pack certification states (`candidate -> verified -> trusted`)
-- trust threshold enforcement
-- manual + rule-based promotion
-
-### v5.6 - Policy Enforcement Layer
-- rule-based reasoning constraints
-- forbidden inference prevention
-- domain policy packs
-
-### v5.7 - Incremental Ingest & Delta Updates
-- partial dataset updates
-- diff-based pack updates
-- deterministic re-ingest
-
-### v5.8 - Query Interface (Read API)
-- structured query interface
-- subject/relation/object retrieval
-- deterministic query paths
-
-### v5.9 - Explanation Layer
-- human-readable reasoning traces
-- proof chain rendering
-- explainable outputs
-
-### v5.10 - Pack Composition System
-- pack dependency graphs
-- reusable pack modules
-- controlled composition
-
-### v5.11 - Domain Specialization Packs
-- geography, logic, policy, and related domains
-- domain-specific constraints
-- validation packs
-
-### v5.12 - Multi-hop Reasoning Optimization
-- deeper inference chains
-- deterministic pruning strategies
-
-### v5.13 - Conflict Resolution Workflows (Manual Only)
-- structured review system
-- human-in-the-loop conflict resolution
-
-### v5.14 - Provenance Indexing
-- fast lookup of provenance chains
-- reverse-trace queries
-
-### v5.15 - Runtime Performance Layer
-- deterministic caching
-- faster graph traversal
-
-### v5.16 - Streaming Inference
-- large dataset reasoning without full load
-- chunk-based evaluation
-
-### v5.17 - Pack Versioning System
-- semantic pack versions
-- compatibility rules
-
-### v5.18 - Validation Engine Hardening
-- stricter validation rules
-- schema enforcement upgrades
-
-### v5.19 - Trust Propagation Refinement
-- deterministic multi-source trust handling
-- tiered trust policies
-
-### v5.20 - Global Consistency Enforcement
-- system-wide invariant checks
-- contradiction detection across all packs
-
-## v6.x Framing (High Level)
-
-`.csrf` = Compiled Symbolic Runtime Format.
-
-Purpose:
-- binary runtime for Correctness Models (CMs)
-- CPU-first execution
-- explicit indexing
-- zero-copy access
+- `CMCF` = `Correctness Model Canonical Format`
+- `.csrf` = `Compiled Symbolic Runtime Format`
 
 Rules:
-- JSONL remains canonical truth.
-- `.csrf` is a compiled runtime artifact.
-- compilation must be reversible.
-- `.csrf` must support indexed lookup, provenance, proof traces, and explanation rendering.
-- this section is framing only; no implementation is introduced here.
+
+- CMCF is canonical, human-readable, hashable source-of-truth structure.
+- `.csrf` is a derived runtime artifact compiled from CMCF.
+- JSONL/CMCF remains canonical truth; `.csrf` is never primary truth.
+
+## Completed
+
+- v5.0 — pack system
+- v5.1 — identity + conflict detection
+- v5.2 — ingest system
+- v5.3 — schema inference / mapping proposal
+- v5.4 — cross-pack reasoning
+- v5.5 — trust certification
+- v5.6 — policy enforcement
+- v5.7 — incremental ingest
+- v5.8 — structured query
+- v5.8.x — edge-case hardening
+- v5.9 — explanation + proof rendering
+
+## Next
+
+- v6.0 — CMCF schema/model/validation foundation
+- v6.1 — universal source adapters to CMCF
+- v6.2 — source trust profiles + policy-gated intake
+- v6.3 — `.csrf` compiled runtime format
+- v6.4 — proof indexing + trace engine
+- v6.5 — conflict resolution workflows
+- v6.6 — advanced policy execution engine
+- v6.7 — pack signing + manifest integrity
+- v6.8 — encrypted/private pack support
+- v6.9 — runtime performance hardening
+- v6.10 — production API/server hardening
+
+## v7.0 Interface Layer
+
+v7.0 introduces an interface layer with optional LLM integration:
+
+`optional LLM interface -> structured query/intent -> VCSE execution -> verified/explained output`
+
+VCSE remains the verifier-centered execution core.
