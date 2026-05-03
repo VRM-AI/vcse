@@ -129,6 +129,7 @@ from vcse.reasoning.global_graph import build_global_claim_graph
 from vcse.identity.normalizer import normalize_entity
 from vcse.query import StructuredQuery, StructuredQueryEngine
 from vcse.explain import ExplanationBuilder, ExplanationRenderer as ProofExplanationRenderer
+from vcse.runtime import compile_cmcf_to_csrf, load_csrf, load_runtime, save_csrf
 
 
 def build_logic_demo_state() -> WorldStateMemory:
@@ -3417,36 +3418,65 @@ def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
 
 
 def run_reason(
-    packs_dir: Path,
+    packs_dir: Path | None = None,
+    csrf_file: Path | None = None,
     json_output: bool = False,
     trusted_only: bool = False,
     policy_file: Path | None = None,
     explain: bool = False,
 ) -> str:
-    if not packs_dir.exists() or not packs_dir.is_dir():
-        raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
+    if packs_dir is None and csrf_file is None:
+        raise ValueError("MISSING_REASON_SCOPE: provide --packs or --csrf")
+    if packs_dir is not None and csrf_file is not None:
+        raise ValueError("INVALID_REASON_SCOPE: choose either --packs or --csrf")
 
-    all_pack_dirs = sorted(
-        [path for path in packs_dir.iterdir() if path.is_dir() and (path / "pack.json").exists() and (path / "claims.jsonl").exists()],
-        key=lambda item: str(item),
-    )
     pack_dirs: list[Path] = []
     skipped: list[dict[str, str]] = []
-    for path in all_pack_dirs:
-        manifest = json.loads((path / "pack.json").read_text())
-        pack_id = str(manifest.get("id") or manifest.get("pack_id") or path.name)
-        lifecycle_status = str(manifest.get("lifecycle_status", "candidate")).strip() or "candidate"
-        if trusted_only and lifecycle_status not in {"certified", "trusted"}:
-            skipped.append(
+    runtime_claims_source: list[dict] = []
+    pack_ref = ""
+    if csrf_file is not None:
+        runtime = load_csrf(csrf_file)
+        pack_ref = str(csrf_file)
+        for item in runtime.records:
+            if trusted_only and item.lifecycle_status not in {"certified", "trusted"}:
+                continue
+            runtime_claims_source.append(
                 {
-                    "pack_id": pack_id,
-                    "path": str(path),
-                    "lifecycle_status": lifecycle_status,
-                    "reason": "pack lifecycle_status not eligible for trusted-only reasoning",
+                    "subject": item.subject,
+                    "relation": item.relation,
+                    "object": item.object,
+                    "pack_id": "cmcf",
+                    "provenance": {"provenance_id": item.provenance_id},
+                    "trust_tier": item.trust_tier,
+                    "claim_id": item.claim_id,
+                    "verification_status": item.verification_status,
+                    "lifecycle_status": item.lifecycle_status,
                 }
             )
-            continue
-        pack_dirs.append(path)
+    else:
+        assert packs_dir is not None
+        if not packs_dir.exists() or not packs_dir.is_dir():
+            raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
+        pack_ref = str(packs_dir)
+        all_pack_dirs = sorted(
+            [path for path in packs_dir.iterdir() if path.is_dir() and (path / "pack.json").exists() and (path / "claims.jsonl").exists()],
+            key=lambda item: str(item),
+        )
+        for path in all_pack_dirs:
+            manifest = json.loads((path / "pack.json").read_text())
+            pack_id = str(manifest.get("id") or manifest.get("pack_id") or path.name)
+            lifecycle_status = str(manifest.get("lifecycle_status", "candidate")).strip() or "candidate"
+            if trusted_only and lifecycle_status not in {"certified", "trusted"}:
+                skipped.append(
+                    {
+                        "pack_id": pack_id,
+                        "path": str(path),
+                        "lifecycle_status": lifecycle_status,
+                        "reason": "pack lifecycle_status not eligible for trusted-only reasoning",
+                    }
+                )
+                continue
+            pack_dirs.append(path)
 
     active_policy = DEFAULT_POLICY
     if policy_file is not None:
@@ -3455,13 +3485,12 @@ def run_reason(
         except PolicyLoadError as exc:
             raise TrustError("POLICY_LOAD_FAILED", str(exc)) from exc
 
-    graph = build_global_claim_graph(pack_dirs)
     policy_enforcer = PolicyEnforcer()
     runtime_claims: list[dict] = []
     blocked_claim_count = 0
     policy_decisions: list[dict[str, str | None]] = []
-    for item in graph.claims:
-        claim = item.to_dict()
+    source_claims = runtime_claims_source if csrf_file is not None else [item.to_dict() for item in build_global_claim_graph(pack_dirs).claims]
+    for claim in source_claims:
         decision = policy_enforcer.evaluate_claim(claim, active_policy)
         policy_decisions.append(
             {
@@ -3481,7 +3510,7 @@ def run_reason(
     conflicts = ConflictDetector().detect_global_conflicts(runtime_claims + inferred_claims)
     payload = {
         "status": "GLOBAL_REASONING_COMPLETE",
-        "pack_dir": str(packs_dir),
+        "pack_dir": pack_ref,
         "trusted_only": trusted_only,
         "policy_id": active_policy.policy_id,
         "packs_loaded": [str(path) for path in pack_dirs],
@@ -3520,7 +3549,7 @@ def run_reason(
         return json.dumps(payload, sort_keys=True)
     lines = [
         "status: GLOBAL_REASONING_COMPLETE",
-        f"pack_dir: {packs_dir}",
+        f"pack_dir: {pack_ref}",
         f"trusted_only: {trusted_only}",
         f"policy_id: {active_policy.policy_id}",
         f"packs_loaded: {len(pack_dirs)}",
@@ -3563,6 +3592,7 @@ def run_query(
     *,
     pack_ref: str | None = None,
     packs_dir: Path | None = None,
+    csrf_file: Path | None = None,
     subject: str | None = None,
     relation: str | None = None,
     object_value: str | None = None,
@@ -3576,10 +3606,11 @@ def run_query(
 ) -> str:
     if not any([subject, relation, object_value]):
         raise ValueError("MISSING_QUERY_FILTER: provide at least one of --subject, --relation, --object")
-    if pack_ref is None and packs_dir is None:
-        raise ValueError("MISSING_QUERY_SCOPE: provide --pack or --packs")
-    if pack_ref is not None and packs_dir is not None:
-        raise ValueError("INVALID_QUERY_SCOPE: choose either --pack or --packs")
+    scope_count = sum(item is not None for item in (pack_ref, packs_dir, csrf_file))
+    if scope_count == 0:
+        raise ValueError("MISSING_QUERY_SCOPE: provide --pack, --packs, or --csrf")
+    if scope_count > 1:
+        raise ValueError("INVALID_QUERY_SCOPE: choose exactly one of --pack, --packs, or --csrf")
 
     query = StructuredQuery(
         subject=subject,
@@ -3593,7 +3624,9 @@ def run_query(
         limit=limit,
     )
     engine = StructuredQueryEngine()
-    if pack_ref is not None and packs_dir is None:
+    if csrf_file is not None:
+        result = engine.query_csrf(load_runtime(str(csrf_file)), query)
+    elif pack_ref is not None and packs_dir is None:
         result = engine.query_pack(_resolve_pack_reference(pack_ref), query)
     else:
         result = engine.query_packs(packs_dir or Path("."), query)
@@ -3714,6 +3747,52 @@ def run_cmcf_validate(path: Path, json_output: bool = False) -> str:
                 f"  - [{issue['index']}] {issue['code']} ({issue['severity']}) {issue['path']}: {issue['message']}"
             )
     return "\n".join(lines)
+
+
+def run_compile_csrf(cmcf_file: Path, output_file: Path, json_output: bool = False) -> str:
+    records = _load_cmcf_records(cmcf_file)
+    runtime_index = compile_cmcf_to_csrf(records)
+    save_csrf(runtime_index, output_file)
+    payload = {
+        "status": "CSRF_COMPILED",
+        "cmcf_file": str(cmcf_file),
+        "output_file": str(output_file),
+        "record_count": len(runtime_index.records),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: CSRF_COMPILED",
+            f"cmcf_file: {cmcf_file}",
+            f"output_file: {output_file}",
+            f"record_count: {len(runtime_index.records)}",
+        ]
+    )
+
+
+def run_runtime_inspect(csrf_file: Path, json_output: bool = False) -> str:
+    runtime_index = load_csrf(csrf_file)
+    payload = {
+        "status": "RUNTIME_INSPECTED",
+        "file": str(csrf_file),
+        "record_count": len(runtime_index.records),
+        "subject_key_count": len(runtime_index.by_subject),
+        "relation_key_count": len(runtime_index.by_relation),
+        "object_key_count": len(runtime_index.by_object),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: RUNTIME_INSPECTED",
+            f"file: {csrf_file}",
+            f"record_count: {len(runtime_index.records)}",
+            f"subject_key_count: {len(runtime_index.by_subject)}",
+            f"relation_key_count: {len(runtime_index.by_relation)}",
+            f"object_key_count: {len(runtime_index.by_object)}",
+        ]
+    )
 
 
 def run_policy_inspect(policy_file: Path, json_output: bool = False) -> str:
@@ -3882,15 +3961,17 @@ def main(argv: list[str] | None = None) -> None:
     conflict_detect_parser.add_argument("--json", action="store_true", dest="json_output")
 
     reason_parser = subparsers.add_parser("reason")
-    reason_parser.add_argument("--packs", required=True, type=Path, dest="packs_dir")
+    reason_parser.add_argument("--packs", type=Path, dest="packs_dir")
     reason_parser.add_argument("--json", action="store_true", dest="json_output")
     reason_parser.add_argument("--trusted-only", action="store_true", dest="trusted_only")
     reason_parser.add_argument("--policy", type=Path, dest="policy_file")
     reason_parser.add_argument("--explain", action="store_true")
+    reason_parser.add_argument("--csrf", type=Path, dest="csrf_file")
 
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--pack")
     query_parser.add_argument("--packs", type=Path)
+    query_parser.add_argument("--csrf", type=Path, dest="csrf_file")
     query_parser.add_argument("--subject")
     query_parser.add_argument("--relation")
     query_parser.add_argument("--object", dest="object_value")
@@ -3958,6 +4039,10 @@ def main(argv: list[str] | None = None) -> None:
 
     compile_parser = subparsers.add_parser("compile")
     compile_subparsers = compile_parser.add_subparsers(dest="compile_command")
+    compile_csrf_parser = compile_subparsers.add_parser("csrf")
+    compile_csrf_parser.add_argument("cmcf_file", type=Path)
+    compile_csrf_parser.add_argument("--output", required=True, type=Path, dest="output_file")
+    compile_csrf_parser.add_argument("--json", action="store_true", dest="json_output")
     compile_knowledge_parser = compile_subparsers.add_parser("knowledge")
     compile_knowledge_parser.add_argument("--source", required=True, type=Path)
     compile_knowledge_parser.add_argument("--mapping", required=True, type=Path)
@@ -4438,6 +4523,7 @@ def main(argv: list[str] | None = None) -> None:
             print(
                 run_reason(
                     args.packs_dir,
+                    csrf_file=args.csrf_file,
                     json_output=args.json_output,
                     trusted_only=args.trusted_only,
                     policy_file=args.policy_file,
@@ -4450,6 +4536,7 @@ def main(argv: list[str] | None = None) -> None:
                 run_query(
                     pack_ref=args.pack,
                     packs_dir=args.packs,
+                    csrf_file=args.csrf_file,
                     subject=args.subject,
                     relation=args.relation,
                     object_value=args.object_value,
@@ -4485,6 +4572,9 @@ def main(argv: list[str] | None = None) -> None:
                 print(run_knowledge_stats(Path(args.pack)))
                 return
         if args.command == "compile":
+            if args.compile_command == "csrf":
+                print(run_compile_csrf(args.cmcf_file, args.output_file, json_output=args.json_output))
+                return
             if args.compile_command == "knowledge":
                 print(
                     run_compile_knowledge(
@@ -4498,6 +4588,10 @@ def main(argv: list[str] | None = None) -> None:
                         json_output=args.json_output,
                     )
                 )
+                return
+        if args.command == "runtime":
+            if args.runtime_command == "inspect":
+                print(run_runtime_inspect(args.csrf_file, json_output=args.json_output))
                 return
         if args.command == "compiler":
             if args.compiler_command == "validate-mapping":
@@ -5271,3 +5365,8 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
+    runtime_parser = subparsers.add_parser("runtime")
+    runtime_subparsers = runtime_parser.add_subparsers(dest="runtime_command")
+    runtime_inspect_parser = runtime_subparsers.add_parser("inspect")
+    runtime_inspect_parser.add_argument("csrf_file", type=Path)
+    runtime_inspect_parser.add_argument("--json", action="store_true", dest="json_output")

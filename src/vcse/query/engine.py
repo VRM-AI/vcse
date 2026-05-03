@@ -10,12 +10,122 @@ from vcse.identity.normalizer import normalize_entity
 from vcse.policy import PolicyEnforcer, PolicyLoadError
 from vcse.policy import load_policy as load_policy_set
 from vcse.query.structured import StructuredQuery, StructuredQueryResult
+from vcse.runtime.index import lookup_indices
+from vcse.runtime.model import CSRFIndex
 
 
 _TRUSTED_LIFECYCLE = frozenset({"certified", "trusted"})
 
 
 class StructuredQueryEngine:
+    def query_csrf(self, runtime_index: CSRFIndex, query: StructuredQuery) -> StructuredQueryResult:
+        filters: list[str] = []
+        if query.trusted_only:
+            filters.append("trusted_only")
+        if not query.include_provenance:
+            filters.append("provenance:excluded")
+        if query.include_inferred:
+            filters.append("include_inferred")
+        if query.limit is not None:
+            filters.append(f"limit:{query.limit}")
+
+        policy = None
+        policy_enforcer: PolicyEnforcer | None = None
+        if query.policy_file:
+            try:
+                policy = load_policy_set(Path(query.policy_file))
+                policy_enforcer = PolicyEnforcer()
+                filters.append(f"policy:{policy.policy_id}")
+            except PolicyLoadError as exc:
+                return StructuredQueryResult(
+                    status="QUERY_ERROR",
+                    query=query,
+                    results=tuple(),
+                    result_count=0,
+                    packs_searched=tuple(),
+                    packs_skipped=tuple(),
+                    rows_examined=0,
+                    filters_applied=tuple(filters + [f"error:policy_load_failed:{exc}"]),
+                )
+
+        candidate_sets: list[set[int]] = []
+        if query.subject:
+            candidate_sets.append(set(lookup_indices(runtime_index.by_subject, query.subject)))
+        if query.relation:
+            candidate_sets.append(set(lookup_indices(runtime_index.by_relation, query.relation)))
+        if query.object:
+            candidate_sets.append(set(lookup_indices(runtime_index.by_object, query.object)))
+
+        if not candidate_sets:
+            candidate_indices = range(len(runtime_index.records))
+        else:
+            intersection = set.intersection(*candidate_sets) if candidate_sets else set()
+            candidate_indices = sorted(intersection)
+
+        rows_examined = 0
+        blocked_claim_count = 0
+        results: list[dict[str, Any]] = []
+        for idx in candidate_indices:
+            row = runtime_index.records[idx]
+            rows_examined += 1
+            claim = {
+                "subject": row.subject,
+                "relation": row.relation,
+                "object": row.object,
+                "claim_id": row.claim_id,
+                "trust_tier": row.trust_tier,
+                "lifecycle_status": row.lifecycle_status,
+                "verification_status": row.verification_status,
+                "provenance": {"provenance_id": row.provenance_id},
+            }
+            if query.trusted_only and row.lifecycle_status not in _TRUSTED_LIFECYCLE:
+                continue
+            if policy_enforcer is not None and policy is not None:
+                decision = policy_enforcer.evaluate_claim(claim, policy)
+                if decision.status == "BLOCKED":
+                    blocked_claim_count += 1
+                    continue
+            if not _matches(claim, query):
+                continue
+            results.append(
+                {
+                    "subject": row.subject,
+                    "relation": row.relation,
+                    "object": row.object,
+                    "pack_id": "cmcf",
+                    "claim_id": row.claim_id,
+                    "trust_tier": row.trust_tier,
+                    "lifecycle_status": row.lifecycle_status,
+                    "provenance": {"provenance_id": row.provenance_id} if query.include_provenance else None,
+                }
+            )
+
+        results_sorted = sorted(
+            results,
+            key=lambda item: (
+                str(item.get("subject", "")),
+                str(item.get("relation", "")),
+                str(item.get("object", "")),
+                str(item.get("pack_id", "")),
+                str(item.get("claim_id", "")),
+            ),
+        )
+        if query.limit is not None:
+            results_sorted = results_sorted[: max(0, query.limit)]
+        if blocked_claim_count > 0:
+            filters.append(f"blocked_claims:{blocked_claim_count}")
+        status = "QUERY_COMPLETE" if results_sorted else "QUERY_NO_RESULTS"
+        return StructuredQueryResult(
+            status=status,
+            query=query,
+            results=tuple(results_sorted),
+            result_count=len(results_sorted),
+            packs_searched=("cmcf",),
+            packs_skipped=tuple(),
+            rows_examined=rows_examined,
+            filters_applied=tuple(filters),
+        )
+
     def query_pack(self, pack_path: Path, query: StructuredQuery) -> StructuredQueryResult:
         return self._query_pack_paths((Path(pack_path),), query)
 
