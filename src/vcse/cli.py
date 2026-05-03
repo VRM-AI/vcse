@@ -3424,6 +3424,7 @@ def run_reason(
     trusted_only: bool = False,
     policy_file: Path | None = None,
     explain: bool = False,
+    proof_index_file: Path | None = None,
 ) -> str:
     if packs_dir is None and csrf_file is None:
         raise ValueError("MISSING_REASON_SCOPE: provide --packs or --csrf")
@@ -3545,6 +3546,21 @@ def run_reason(
     if explain:
         explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
         payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
+        if proof_index_file is not None:
+            from vcse.proof import (
+                load_proof_index,
+                proof_path_to_explanation_trace,
+                select_best_proof,
+            )
+            proof_index = load_proof_index(proof_index_file)
+            indexed_traces: list[dict] = []
+            for inferred in inferred_claims:
+                cid = str(inferred.get("claim_id", ""))
+                best = select_best_proof(proof_index, cid)
+                if best is not None:
+                    indexed_traces.append(proof_path_to_explanation_trace(best))
+            payload["proof_index_file"] = str(proof_index_file)
+            payload["proof_index_traces"] = indexed_traces
     if json_output:
         return json.dumps(payload, sort_keys=True)
     lines = [
@@ -3603,6 +3619,7 @@ def run_query(
     limit: int | None = None,
     json_output: bool = False,
     explain: bool = False,
+    proof_index_file: Path | None = None,
 ) -> str:
     if not any([subject, relation, object_value]):
         raise ValueError("MISSING_QUERY_FILTER: provide at least one of --subject, --relation, --object")
@@ -3643,6 +3660,23 @@ def run_query(
     if explain:
         explanation_result = ExplanationBuilder().explain_query_results(result.results)
         payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
+        if proof_index_file is not None:
+            from vcse.proof import (
+                load_proof_index,
+                proof_path_to_explanation_trace,
+                select_best_proof,
+            )
+            proof_index = load_proof_index(proof_index_file)
+            indexed_traces: list[dict] = []
+            for row in result.results:
+                cid = str(row.get("claim_id", ""))
+                if not cid:
+                    continue
+                best = select_best_proof(proof_index, cid)
+                if best is not None:
+                    indexed_traces.append(proof_path_to_explanation_trace(best))
+            payload["proof_index_file"] = str(proof_index_file)
+            payload["proof_index_traces"] = indexed_traces
     if json_output:
         return json.dumps(payload, sort_keys=True)
 
@@ -3791,6 +3825,113 @@ def run_runtime_inspect(csrf_file: Path, json_output: bool = False) -> str:
             f"subject_key_count: {len(runtime_index.by_subject)}",
             f"relation_key_count: {len(runtime_index.by_relation)}",
             f"object_key_count: {len(runtime_index.by_object)}",
+        ]
+    )
+
+
+def run_proof_build(csrf_file: Path, output_file: Path, json_output: bool = False) -> str:
+    from vcse.proof import compile_proofs_from_csrf, save_proof_index
+    csrf = load_csrf(csrf_file)
+    index = compile_proofs_from_csrf(csrf)
+    save_proof_index(index, output_file)
+    payload = {
+        "status": "PROOF_INDEX_BUILT",
+        "csrf_file": str(csrf_file),
+        "output_file": str(output_file),
+        "proof_count": len(index.proofs),
+        "result_count": len(index.by_result),
+        "support_count": len(index.by_support),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: PROOF_INDEX_BUILT",
+            f"csrf_file: {csrf_file}",
+            f"output_file: {output_file}",
+            f"proof_count: {len(index.proofs)}",
+            f"result_count: {len(index.by_result)}",
+            f"support_count: {len(index.by_support)}",
+        ]
+    )
+
+
+def run_proof_why(claim_id: str, proof_index_file: Path, json_output: bool = False) -> str:
+    from vcse.proof import load_proof_index, select_best_proof, proof_path_to_explanation_trace
+    index = load_proof_index(proof_index_file)
+    best = select_best_proof(index, claim_id)
+    proofs = index.proofs_for_result(claim_id)
+    payload = {
+        "status": "PROOF_WHY",
+        "claim_id": claim_id,
+        "proof_count": len(proofs),
+        "selected_proof": proof_path_to_explanation_trace(best) if best else None,
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    if best is None:
+        return f"status: PROOF_WHY\nclaim_id: {claim_id}\nproof_count: 0"
+    return "\n".join(
+        [
+            "status: PROOF_WHY",
+            f"claim_id: {claim_id}",
+            f"proof_count: {len(proofs)}",
+            f"selected_proof_id: {best.proof_id}",
+            f"verification_status: {best.verification_status}",
+            f"path_length: {best.path_length}",
+            f"trust_tier: {best.trust_tier}",
+            "trace:",
+            *[f"  - {step.subject} {step.relation} {step.object}" for step in best.steps],
+        ]
+    )
+
+
+def run_proof_supports(claim_id: str, proof_index_file: Path, json_output: bool = False) -> str:
+    from vcse.proof import load_proof_index
+    index = load_proof_index(proof_index_file)
+    dependents = index.proofs_supporting(claim_id)
+    dependent_results = sorted({p.result_claim_id for p in dependents})
+    payload = {
+        "status": "PROOF_SUPPORTS",
+        "claim_id": claim_id,
+        "dependent_proof_count": len(dependents),
+        "dependent_proof_ids": [p.proof_id for p in dependents],
+        "dependent_results": dependent_results,
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: PROOF_SUPPORTS",
+            f"claim_id: {claim_id}",
+            f"dependent_proof_count: {len(dependents)}",
+            f"dependent_results: {','.join(dependent_results)}",
+        ]
+    )
+
+
+def run_proof_inspect(proof_index_file: Path, json_output: bool = False) -> str:
+    from vcse.proof import load_proof_index
+    index = load_proof_index(proof_index_file)
+    payload = {
+        "status": "PROOF_INDEX_INSPECTED",
+        "file": str(proof_index_file),
+        "proof_count": len(index.proofs),
+        "result_count": len(index.by_result),
+        "support_count": len(index.by_support),
+        "subject_count": len(index.by_subject),
+        "relation_count": len(index.by_relation),
+        "object_count": len(index.by_object),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: PROOF_INDEX_INSPECTED",
+            f"file: {proof_index_file}",
+            f"proof_count: {len(index.proofs)}",
+            f"result_count: {len(index.by_result)}",
+            f"support_count: {len(index.by_support)}",
         ]
     )
 
@@ -3967,6 +4108,7 @@ def main(argv: list[str] | None = None) -> None:
     reason_parser.add_argument("--policy", type=Path, dest="policy_file")
     reason_parser.add_argument("--explain", action="store_true")
     reason_parser.add_argument("--csrf", type=Path, dest="csrf_file")
+    reason_parser.add_argument("--proof-index", type=Path, dest="proof_index_file")
 
     query_parser = subparsers.add_parser("query")
     query_parser.add_argument("--pack")
@@ -3988,6 +4130,7 @@ def main(argv: list[str] | None = None) -> None:
     query_parser.add_argument("--limit", type=int)
     query_parser.add_argument("--json", action="store_true", dest="json_output")
     query_parser.add_argument("--explain", action="store_true")
+    query_parser.add_argument("--proof-index", type=Path, dest="proof_index_file")
 
     cmcf_parser = subparsers.add_parser("cmcf")
     cmcf_subparsers = cmcf_parser.add_subparsers(dest="cmcf_command")
@@ -4042,6 +4185,24 @@ def main(argv: list[str] | None = None) -> None:
     runtime_inspect_parser = runtime_subparsers.add_parser("inspect")
     runtime_inspect_parser.add_argument("csrf_file", type=Path)
     runtime_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    proof_parser = subparsers.add_parser("proof")
+    proof_subparsers = proof_parser.add_subparsers(dest="proof_command")
+    proof_build_parser = proof_subparsers.add_parser("build")
+    proof_build_parser.add_argument("--csrf", required=True, type=Path, dest="csrf_file")
+    proof_build_parser.add_argument("--output", required=True, type=Path, dest="output_file")
+    proof_build_parser.add_argument("--json", action="store_true", dest="json_output")
+    proof_why_parser = proof_subparsers.add_parser("why")
+    proof_why_parser.add_argument("claim_id")
+    proof_why_parser.add_argument("--proof-index", required=True, type=Path, dest="proof_index_file")
+    proof_why_parser.add_argument("--json", action="store_true", dest="json_output")
+    proof_supports_parser = proof_subparsers.add_parser("supports")
+    proof_supports_parser.add_argument("claim_id")
+    proof_supports_parser.add_argument("--proof-index", required=True, type=Path, dest="proof_index_file")
+    proof_supports_parser.add_argument("--json", action="store_true", dest="json_output")
+    proof_inspect_parser = proof_subparsers.add_parser("inspect")
+    proof_inspect_parser.add_argument("proof_index_file", type=Path)
+    proof_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
 
     compile_parser = subparsers.add_parser("compile")
     compile_subparsers = compile_parser.add_subparsers(dest="compile_command")
@@ -4534,6 +4695,7 @@ def main(argv: list[str] | None = None) -> None:
                     trusted_only=args.trusted_only,
                     policy_file=args.policy_file,
                     explain=args.explain,
+                    proof_index_file=getattr(args, "proof_index_file", None),
                 )
             )
             return
@@ -4553,6 +4715,7 @@ def main(argv: list[str] | None = None) -> None:
                     limit=args.limit,
                     json_output=args.json_output,
                     explain=args.explain,
+                    proof_index_file=getattr(args, "proof_index_file", None),
                 )
             )
             return
@@ -4598,6 +4761,19 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "runtime":
             if args.runtime_command == "inspect":
                 print(run_runtime_inspect(args.csrf_file, json_output=args.json_output))
+                return
+        if args.command == "proof":
+            if args.proof_command == "build":
+                print(run_proof_build(args.csrf_file, args.output_file, json_output=args.json_output))
+                return
+            if args.proof_command == "why":
+                print(run_proof_why(args.claim_id, args.proof_index_file, json_output=args.json_output))
+                return
+            if args.proof_command == "supports":
+                print(run_proof_supports(args.claim_id, args.proof_index_file, json_output=args.json_output))
+                return
+            if args.proof_command == "inspect":
+                print(run_proof_inspect(args.proof_index_file, json_output=args.json_output))
                 return
         if args.command == "compiler":
             if args.compiler_command == "validate-mapping":
