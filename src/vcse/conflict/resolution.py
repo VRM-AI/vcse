@@ -7,7 +7,7 @@ import hashlib
 from vcse.conflict.workflow import ConflictImpact, ConflictRef, ResolutionOption
 
 
-_ACTIONS = ("keep_a", "keep_b", "mark_disputed", "require_review")
+_ACTIONS = ("KEEP_A", "KEEP_B", "MARK_DISPUTED", "REQUIRE_REVIEW")
 
 
 def _option_id(conflict_id: str, action: str) -> str:
@@ -23,11 +23,11 @@ def _trust_rationale(conflict: ConflictRef) -> str | None:
     if conflict.trust_tier_a > conflict.trust_tier_b:
         return (
             f"Claim A has higher trust_tier ({conflict.trust_tier_a}) than Claim B "
-            f"({conflict.trust_tier_b}); recommended_by_trust=keep_a."
+            f"({conflict.trust_tier_b}); recommended_by_trust=KEEP_A."
         )
     return (
         f"Claim B has higher trust_tier ({conflict.trust_tier_b}) than Claim A "
-        f"({conflict.trust_tier_a}); recommended_by_trust=keep_b."
+        f"({conflict.trust_tier_a}); recommended_by_trust=KEEP_B."
     )
 
 
@@ -48,25 +48,25 @@ def generate_resolution_options(
 
     options: list[ResolutionOption] = []
     for action in _ACTIONS:
-        if action == "keep_a":
+        if action == "KEEP_A":
             rationale = f"Select claim A ({label_a}); suppress claim B ({label_b})."
             selected = conflict.claim_id_a
             suppressed = tuple(cid for cid in (conflict.claim_id_b,) if cid)
-        elif action == "keep_b":
+        elif action == "KEEP_B":
             rationale = f"Select claim B ({label_b}); suppress claim A ({label_a})."
             selected = conflict.claim_id_b
             suppressed = tuple(cid for cid in (conflict.claim_id_a,) if cid)
-        elif action == "mark_disputed":
+        elif action == "MARK_DISPUTED":
             rationale = "Both claims remain candidates; marked disputed pending review."
             selected = None
             suppressed = ()
-        else:  # require_review
+        else:  # REQUIRE_REVIEW
             rationale = "Maintainer review required; no automatic resolution applied."
             selected = None
             suppressed = ()
 
         full_rationale = rationale + impact_note
-        if trust_note and action in {"keep_a", "keep_b"}:
+        if trust_note and action in {"KEEP_A", "KEEP_B"}:
             full_rationale += f" {trust_note}"
 
         options.append(

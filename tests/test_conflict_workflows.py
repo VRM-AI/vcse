@@ -110,7 +110,7 @@ def test_resolution_options_include_required_actions() -> None:
     refs = derive_refs_from_claims(conflicts, _claims())
     options = generate_resolution_options(refs[0])
     actions = sorted(option.action for option in options)
-    assert actions == ["keep_a", "keep_b", "mark_disputed", "require_review"]
+    assert actions == ["KEEP_A", "KEEP_B", "MARK_DISPUTED", "REQUIRE_REVIEW"]
 
 
 def test_resolution_options_do_not_mutate(monkeypatch) -> None:
@@ -129,7 +129,7 @@ def test_trust_aware_rationale_present() -> None:
     conflicts = detector.detect_global_conflicts(_claims())
     refs = derive_refs_from_claims(conflicts, _claims())
     options = generate_resolution_options(refs[0])
-    keep_a = next(o for o in options if o.action == "keep_a")
+    keep_a = next(o for o in options if o.action == "KEEP_A")
     assert "trust_tier" in keep_a.rationale.lower()
 
 

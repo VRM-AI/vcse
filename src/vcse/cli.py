@@ -3679,21 +3679,6 @@ def run_reason(
     if explain:
         explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
         payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
-        if proof_index_file is not None:
-            from vcse.proof import (
-                load_proof_index,
-                proof_path_to_explanation_trace,
-                select_best_proof,
-            )
-            proof_index = load_proof_index(proof_index_file)
-            indexed_traces: list[dict] = []
-            for inferred in inferred_claims:
-                cid = str(inferred.get("claim_id", ""))
-                best = select_best_proof(proof_index, cid)
-                if best is not None:
-                    indexed_traces.append(proof_path_to_explanation_trace(best))
-            payload["proof_index_file"] = str(proof_index_file)
-            payload["proof_index_traces"] = indexed_traces
     if json_output:
         return json.dumps(payload, sort_keys=True)
     lines = [
@@ -3793,23 +3778,6 @@ def run_query(
     if explain:
         explanation_result = ExplanationBuilder().explain_query_results(result.results)
         payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
-        if proof_index_file is not None:
-            from vcse.proof import (
-                load_proof_index,
-                proof_path_to_explanation_trace,
-                select_best_proof,
-            )
-            proof_index = load_proof_index(proof_index_file)
-            indexed_traces: list[dict] = []
-            for row in result.results:
-                cid = str(row.get("claim_id", ""))
-                if not cid:
-                    continue
-                best = select_best_proof(proof_index, cid)
-                if best is not None:
-                    indexed_traces.append(proof_path_to_explanation_trace(best))
-            payload["proof_index_file"] = str(proof_index_file)
-            payload["proof_index_traces"] = indexed_traces
     if json_output:
         return json.dumps(payload, sort_keys=True)
 

@@ -281,7 +281,7 @@ def test_query_explain_with_proof_index_does_not_change_result_count(tmp_path: P
         )
     )
     assert base["result_count"] == with_proof["result_count"]
-    assert "proof_index_traces" in with_proof
+    assert base["explanations"] == with_proof["explanations"]
 
 
 def test_reason_explain_with_proof_index_inferred_count_unchanged(tmp_path: Path) -> None:
@@ -328,4 +328,4 @@ def test_reason_explain_with_proof_index_inferred_count_unchanged(tmp_path: Path
         run_reason(csrf_file=csrf_path, json_output=True, explain=True, proof_index_file=proof_path)
     )
     assert len(base["inferred_claims"]) == len(enriched["inferred_claims"])
-    assert "proof_index_traces" in enriched
+    assert base["explanations"] == enriched["explanations"]
