@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import shutil
 import sys
 import time
@@ -17,6 +18,8 @@ from vcse.adapters import get_adapter
 from vcse.benchmark import BenchmarkCaseError, format_benchmark_text, run_benchmark
 from vcse.benchmark_coverage import CoverageBenchmarkError, format_coverage_text, run_coverage_benchmark
 from vcse.benchmark_inference_classification import InferenceType, classify_resolution_for_claim
+from vcse.cmcf.normalize import normalize_source_to_cmcf
+from vcse.cmcf.serialize import record_to_dict
 from vcse.config import load_settings
 from vcse.domain.loader import DomainSpecError, load_domain_spec
 from vcse.compiler import CompilerError, KnowledgeCompiler, compile_report_to_dict
@@ -740,14 +743,66 @@ def run_reasonops_report(path: Path) -> str:
 
 
 def run_ingest(
-    path: Path,
+    source: str,
     json_output: bool = False,
     auto_approve: bool = False,
     incremental: bool = False,
     force: bool = False,
+    profile: str | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+    cmcf: bool = False,
 ) -> str:
+    source_text = str(source)
+    is_url = bool(re.match(r"^https?://", source_text.strip().lower()))
+    if is_url or cmcf:
+        intake_result = normalize_source_to_cmcf(source_text, profile=profile, limit=limit)
+        pack_id = None
+        if not dry_run and intake_result.status in {"INTAKE_COMPLETE", "INTAKE_INVALID"}:
+            pack_id = _write_cmcf_candidate_pack(intake_result)
+        payload = {
+            "status": intake_result.status,
+            "source": intake_result.source.original,
+            "detected_format": intake_result.detected_format,
+            "adapter_id": intake_result.adapter_id,
+            "profile_id": intake_result.profile_id,
+            "row_count": intake_result.row_count,
+            "cmcf_record_count": intake_result.cmcf_record_count,
+            "validation_issue_count": intake_result.validation_issue_count,
+            "false_verified_count": 0,
+            "verification_status": "UNVERIFIED",
+            "certification_status": "NOT_CERTIFIED",
+            "lifecycle_status": "candidate",
+            "dry_run": dry_run,
+            "pack_created": pack_id,
+            "errors": list(intake_result.errors),
+        }
+        if json_output:
+            return json.dumps(payload, sort_keys=True)
+        lines = [
+            f"status: {payload['status']}",
+            f"source: {payload['source']}",
+            f"detected_format: {payload['detected_format']}",
+            f"adapter_id: {payload['adapter_id']}",
+            f"profile_id: {payload['profile_id']}",
+            f"row_count: {payload['row_count']}",
+            f"cmcf_record_count: {payload['cmcf_record_count']}",
+            f"validation_issue_count: {payload['validation_issue_count']}",
+            f"false_verified_count: {payload['false_verified_count']}",
+            f"lifecycle_status: {payload['lifecycle_status']}",
+            f"verification_status: {payload['verification_status']}",
+            f"certification_status: {payload['certification_status']}",
+            f"dry_run: {payload['dry_run']}",
+            f"pack_created: {payload['pack_created'] or ''}",
+        ]
+        if payload["errors"]:
+            lines.append("errors:")
+            for item in payload["errors"]:
+                lines.append(f"  - {item}")
+        return "\n".join(lines)
+
     result = run_autonomous_ingest(
-        path=path,
+        path=Path(source_text),
         auto_approve=auto_approve,
         incremental=incremental,
         force=force,
@@ -821,6 +876,100 @@ def run_ingest(
             else:
                 lines.append("    - none")
     return "\n".join(lines)
+
+
+def _write_cmcf_candidate_pack(intake_result) -> str:
+    source_name = Path(intake_result.source.original).stem or "source"
+    run_token = str(int(time.time()))
+    pack_id = f"{source_name}_cmcf_candidate_{run_token}"
+    pack_path = Path("examples") / "packs" / pack_id
+    suffix = 2
+    while pack_path.exists():
+        pack_id = f"{source_name}_cmcf_candidate_{run_token}_{suffix}"
+        pack_path = Path("examples") / "packs" / pack_id
+        suffix += 1
+    pack_path.mkdir(parents=True, exist_ok=False)
+
+    cmcf_rows = [record_to_dict(record) for record in intake_result.records]
+    claims = [
+        {
+            "claim_key": f"{row['claim']['subject']}|{row['claim']['relation']}|{row['claim']['object']}",
+            "subject": row["claim"]["subject"],
+            "relation": row["claim"]["relation"],
+            "object": row["claim"]["object"],
+            "qualifiers": {"inference_type": "explicit"},
+            "provenance": {
+                "source_type": row["provenance"]["source_type"],
+                "source_id": row["provenance"]["provenance_id"],
+                "location": row["provenance"]["locator"] or "",
+                "evidence_text": row["provenance"]["raw_value"] or "",
+                "confidence": 1.0,
+                "trust_level": "unrated",
+            },
+        }
+        for row in cmcf_rows
+    ]
+    provenance_rows = [row["provenance"] for row in cmcf_rows]
+
+    (pack_path / "pack.json").write_text(
+        json.dumps(
+            {
+                "id": pack_id,
+                "version": "1.0.0",
+                "domain": "ingest",
+                "lifecycle_status": "candidate",
+                "claim_count": len(claims),
+                "provenance_count": len(provenance_rows),
+                "conflict_count": 0,
+                "constraint_count": 0,
+                "template_count": 0,
+                "metrics": {},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    (pack_path / "claims.jsonl").write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in claims))
+    (pack_path / "provenance.jsonl").write_text(
+        "".join(json.dumps(item, sort_keys=True) + "\n" for item in provenance_rows)
+    )
+    (pack_path / "cmcf_records.jsonl").write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in cmcf_rows))
+    (pack_path / "conflicts.json").write_text(json.dumps({"conflict_count": 0, "conflicts": []}, indent=2, sort_keys=True) + "\n")
+    (pack_path / "metrics.json").write_text(
+        json.dumps(
+            {
+                "claim_count": len(claims),
+                "input_record_count": intake_result.row_count,
+                "duplicate_count": 0,
+                "conflict_count": 0,
+                "duplicate_entity_count": 0,
+                "canonical_entity_count": len(claims) * 2,
+                "provenance_count": len(provenance_rows),
+                "benchmark_count": 0,
+                "false_verified_count": 0,
+                "cmcf_record_count": len(cmcf_rows),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    (pack_path / "trust_report.json").write_text(
+        json.dumps(
+            {
+                "status": "TRUST_PENDING",
+                "false_verified_count": 0,
+                "decisions": [],
+                "conflicts": [],
+                "staleness": [],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    return pack_id
 
 
 def run_generate(
@@ -3490,6 +3639,10 @@ def main(argv: list[str] | None = None) -> None:
     ingest_parser.add_argument("--auto-approve", action="store_true")
     ingest_parser.add_argument("--incremental", action="store_true")
     ingest_parser.add_argument("--force", action="store_true")
+    ingest_parser.add_argument("--profile")
+    ingest_parser.add_argument("--limit", type=int)
+    ingest_parser.add_argument("--dry-run", action="store_true")
+    ingest_parser.add_argument("--cmcf", action="store_true")
 
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("spec")
@@ -3993,11 +4146,15 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "ingest":
             print(
                 run_ingest(
-                    Path(args.path),
+                    args.path,
                     json_output=args.json_output,
                     auto_approve=args.auto_approve,
                     incremental=args.incremental,
                     force=args.force,
+                    profile=args.profile,
+                    limit=args.limit,
+                    dry_run=args.dry_run,
+                    cmcf=args.cmcf,
                 )
             )
             return
