@@ -189,24 +189,29 @@ class TrustPromoter:
                 blockers.append("insufficient independent source support or conflicts present")
 
         if target == "T3_CROSS_SUPPORTED":
-            if self.policy.require_verifier_consistency:
-                if verification_status is None:
-                    blockers.append("VERIFIER_RESULT_REQUIRED")
-                elif self.policy.require_positive_proof_count and proof_count < self.policy.min_proof_count:
+            # Unconditional invariant: proof_count >= 1 + VERIFIED always required for T4/T5,
+            # regardless of require_verifier_consistency policy flag.
+            if verification_status is None:
+                blockers.append("VERIFIER_RESULT_REQUIRED")
+            elif proof_count < 1:
+                blockers.append("ZERO_PROOF_BLOCKED")
+                blockers.append("INSUFFICIENT_VERIFIER_PROOF_COUNT")
+            elif verification_status != "VERIFIED":
+                blockers.append("NON_VERIFIED_STATUS_BLOCKED")
+                blockers.append("VERIFICATION_STATUS_NOT_VERIFIED")
+            elif confidence_present and not _is_finite_number(verifier_confidence):
+                blockers.append("NON_FINITE_VERIFIER_CONFIDENCE")
+            else:
+                # Policy-level minimum proof count check (require_verifier_consistency gate)
+                if (
+                    self.policy.require_verifier_consistency
+                    and self.policy.require_positive_proof_count
+                    and proof_count < self.policy.min_proof_count
+                ):
                     blockers.append("INSUFFICIENT_VERIFIER_PROOF_COUNT")
-                elif proof_count < 1:
-                    blockers.append("INSUFFICIENT_VERIFIER_PROOF_COUNT")
-                elif verification_status != "VERIFIED":
-                    blockers.append("VERIFICATION_STATUS_NOT_VERIFIED")
-                elif confidence_present and not _is_finite_number(verifier_confidence):
-                    blockers.append("NON_FINITE_VERIFIER_CONFIDENCE")
-                elif blockers:
-                    pass
                 else:
                     target = "T4_VERIFIER_CONSISTENT"
                     reasons.append("VERIFIER_CONSISTENCY_CONFIRMED")
-            else:
-                target = "T4_VERIFIER_CONSISTENT"
 
         if target == "T4_VERIFIER_CONSISTENT":
             if self.policy.require_gauntlet_pass:
