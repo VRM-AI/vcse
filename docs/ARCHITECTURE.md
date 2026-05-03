@@ -92,3 +92,22 @@ Input JSON / CLI demo
 - `.csrf` (`Compiled Symbolic Runtime Format`) is a future compiled runtime
   artifact derived from CMCF and does not replace canonical JSONL/CMCF truth.
 - Generated artifacts are accepted only after deterministic evaluation.
+
+## Universal Source Intake (v6.1)
+
+New deterministic source intake stack:
+
+- `intake.source`: source reference metadata
+- `intake.fetch`: local/URL fetch and cache (`.vcse/source_cache`)
+- `intake.detect`: extension/content-type/sniff format detection
+- `intake.router`: adapter + profile routing
+- `adapters.*`: JSON/JSONL/CSV/HTML table row extraction
+- `profiles.*`: deterministic row-to-CMCF mapping
+- `cmcf.normalize`: orchestration + CMCF validation
+
+Design constraints:
+
+- deterministic only
+- provenance attached on every CMCF record
+- lifecycle `candidate`, verification `UNVERIFIED`, certification `NOT_CERTIFIED`
+- unknown formats are rejected (no silent guessing)

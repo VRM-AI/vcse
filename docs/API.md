@@ -112,3 +112,29 @@ payload = {
 r = requests.post("http://localhost:8000/v1/chat/completions", json=payload, timeout=30)
 print(r.json())
 ```
+
+## Universal Source Intake (v6.1.0)
+
+`vcse ingest <source>` now supports deterministic CMCF-first intake for:
+
+- local JSON / JSONL / CSV / HTML table
+- local directories
+- HTTP/HTTPS JSON / JSONL / CSV / HTML table
+
+Pipeline:
+
+`source -> fetch/resolve -> detect -> adapter -> rows -> profile -> CMCF -> validate -> candidate pack`
+
+CLI flags:
+
+- `--cmcf` enable new CMCF intake for local sources
+- `--profile` force profile (`historical_events` or `generic_records`)
+- `--limit` cap ingested rows before normalization
+- `--dry-run` execute intake without writing a pack
+
+Rules:
+
+- URL sources always use universal intake.
+- Local sources use legacy ingest unless `--cmcf` is provided.
+- Output records are candidate-only with `UNVERIFIED` and `NOT_CERTIFIED` status.
+- No auto-certification, no NLP/LLM logic, deterministic only.

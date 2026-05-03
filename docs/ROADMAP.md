@@ -46,3 +46,11 @@ v7.0 introduces an interface layer with optional LLM integration:
 `optional LLM interface -> structured query/intent -> VCSE execution -> verified/explained output`
 
 VCSE remains the verifier-centered execution core.
+
+## v6.1 Delivered
+
+- Universal source intake with deterministic adapters (JSON/JSONL/CSV/HTML table)
+- URL fetch + cache layer with bounded timeout/size
+- Profile-based CMCF normalization (`historical_events`, `generic_records`)
+- `vcse ingest` integration with `--cmcf`, `--profile`, `--limit`, `--dry-run`
+- Candidate-only output policy enforcement (`UNVERIFIED`, `NOT_CERTIFIED`)

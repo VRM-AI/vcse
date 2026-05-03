@@ -544,3 +544,32 @@ vcse ask "What continent is Paris in?" --pack general_world --no-explain
 vcse ask "What is the capital of France?" --pack general_world --planned
 vcse benchmark coverage --pack general_world --planned --json
 ```
+
+## Universal Source Intake (v6.1.0)
+
+VCSE now includes a deterministic universal source intake path to normalize heterogeneous sources into CMCF.
+
+Supported sources:
+
+- local JSON / JSONL / CSV / HTML table
+- local directory
+- HTTP/HTTPS URL returning JSON / JSONL / CSV / HTML table
+
+Pipeline:
+
+`source -> resolve/fetch -> detect -> adapter -> rows -> profile -> CMCF -> validate -> candidate pack`
+
+CLI:
+
+```bash
+vcse ingest <source> --cmcf
+vcse ingest <source> --cmcf --profile historical_events
+vcse ingest <source> --cmcf --limit 100 --dry-run --json
+```
+
+Behavior rules:
+
+- URL sources always use universal intake.
+- Local sources use legacy ingest by default; pass `--cmcf` for universal intake.
+- Output is candidate-only (`lifecycle_status=candidate`, `verification_status=UNVERIFIED`, `certification_status=NOT_CERTIFIED`).
+- Deterministic only. No NLP/LLM extraction, no fuzzy matching, no auto-certification.
