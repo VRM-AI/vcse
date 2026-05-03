@@ -4037,6 +4037,12 @@ def main(argv: list[str] | None = None) -> None:
     knowledge_stats_parser = knowledge_subparsers.add_parser("stats")
     knowledge_stats_parser.add_argument("pack")
 
+    runtime_parser = subparsers.add_parser("runtime")
+    runtime_subparsers = runtime_parser.add_subparsers(dest="runtime_command")
+    runtime_inspect_parser = runtime_subparsers.add_parser("inspect")
+    runtime_inspect_parser.add_argument("csrf_file", type=Path)
+    runtime_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+
     compile_parser = subparsers.add_parser("compile")
     compile_subparsers = compile_parser.add_subparsers(dest="compile_command")
     compile_csrf_parser = compile_subparsers.add_parser("csrf")
@@ -5365,8 +5371,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-    runtime_parser = subparsers.add_parser("runtime")
-    runtime_subparsers = runtime_parser.add_subparsers(dest="runtime_command")
-    runtime_inspect_parser = runtime_subparsers.add_parser("inspect")
-    runtime_inspect_parser.add_argument("csrf_file", type=Path)
-    runtime_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
