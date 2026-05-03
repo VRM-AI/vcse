@@ -3417,6 +3417,139 @@ def run_conflict_detect(pack_ref: str, json_output: bool = False) -> str:
     return "\n".join(lines)
 
 
+def _load_pack_claims(pack_path: Path) -> list[dict]:
+    claims_path = pack_path / "claims.jsonl"
+    if not claims_path.exists():
+        raise PackError("PACK_NOT_FOUND", f"missing claims.jsonl in {pack_path}")
+    return [json.loads(line) for line in claims_path.read_text().splitlines() if line.strip()]
+
+
+def _collect_workflow_claims(
+    pack_ref: str | None, packs_dir: Path | None
+) -> tuple[list[dict], str]:
+    if pack_ref and packs_dir:
+        raise ValueError("INVALID_CONFLICT_SCOPE: choose either --pack or --packs")
+    if pack_ref:
+        pack_path = _resolve_pack_reference(pack_ref)
+        return _load_pack_claims(pack_path), str(pack_path)
+    if packs_dir:
+        if not packs_dir.exists() or not packs_dir.is_dir():
+            raise ValueError(f"PACKS_DIR_NOT_FOUND: {packs_dir}")
+        all_claims: list[dict] = []
+        for path in sorted(packs_dir.iterdir(), key=lambda item: str(item)):
+            if not path.is_dir():
+                continue
+            if not (path / "pack.json").exists() or not (path / "claims.jsonl").exists():
+                continue
+            all_claims.extend(_load_pack_claims(path))
+        return all_claims, str(packs_dir)
+    raise ValueError("MISSING_CONFLICT_SCOPE: provide --pack or --packs")
+
+
+def _build_conflict_report(
+    pack_ref: str | None,
+    packs_dir: Path | None,
+    proof_index_file: Path | None,
+):
+    from vcse.conflict import (
+        ConflictDetector,
+        build_conflict_workflow_report,
+        derive_refs_from_claims,
+    )
+
+    claims, scope = _collect_workflow_claims(pack_ref, packs_dir)
+    conflicts = ConflictDetector().detect_global_conflicts(claims)
+    refs = derive_refs_from_claims(conflicts, claims)
+    proof_index = None
+    if proof_index_file is not None:
+        from vcse.proof import load_proof_index
+        proof_index = load_proof_index(proof_index_file)
+    report = build_conflict_workflow_report(refs, proof_index)
+    return report, scope
+
+
+def run_conflict_workflow(
+    pack_ref: str | None = None,
+    packs_dir: Path | None = None,
+    proof_index_file: Path | None = None,
+    json_output: bool = False,
+) -> str:
+    from vcse.conflict import conflict_workflow_report_to_dict
+
+    report, scope = _build_conflict_report(pack_ref, packs_dir, proof_index_file)
+    payload = conflict_workflow_report_to_dict(report)
+    payload["scope"] = scope
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"status: {payload['status']}",
+        f"scope: {scope}",
+        f"conflict_count: {payload['conflict_count']}",
+        f"option_count: {len(payload['options'])}",
+    ]
+    for conflict in payload["conflicts"]:
+        lines.append(
+            f"  - {conflict['conflict_id']}: {conflict['subject']}|{conflict['relation']} "
+            f"{conflict['object_a']} <> {conflict['object_b']}"
+        )
+    return "\n".join(lines)
+
+
+def run_conflict_export_report(
+    pack_ref: str | None,
+    packs_dir: Path | None,
+    output_file: Path,
+    proof_index_file: Path | None = None,
+) -> str:
+    from vcse.conflict import conflict_workflow_report_to_dict
+
+    report, scope = _build_conflict_report(pack_ref, packs_dir, proof_index_file)
+    payload = conflict_workflow_report_to_dict(report)
+    payload["scope"] = scope
+    output_file.write_text(json.dumps(payload, sort_keys=True))
+    return "\n".join(
+        [
+            f"status: {payload['status']}",
+            f"output_file: {output_file}",
+            f"conflict_count: {payload['conflict_count']}",
+        ]
+    )
+
+
+def run_conflict_impact(
+    conflict_id: str,
+    report_file: Path,
+    json_output: bool = False,
+) -> str:
+    payload = json.loads(report_file.read_text())
+    impacts = [item for item in payload.get("impacts", []) if item["conflict_id"] == conflict_id]
+    options = [item for item in payload.get("options", []) if item["conflict_id"] == conflict_id]
+    conflicts = [item for item in payload.get("conflicts", []) if item["conflict_id"] == conflict_id]
+    out = {
+        "status": "CONFLICT_IMPACT",
+        "conflict_id": conflict_id,
+        "conflicts": conflicts,
+        "impacts": impacts,
+        "options": options,
+    }
+    if json_output:
+        return json.dumps(out, sort_keys=True)
+    lines = [
+        f"status: CONFLICT_IMPACT",
+        f"conflict_id: {conflict_id}",
+        f"impact_count: {len(impacts)}",
+        f"option_count: {len(options)}",
+    ]
+    for impact in impacts:
+        lines.append(
+            f"  impact_score: {impact['impact_score']} "
+            f"(claims={len(impact['affected_claim_ids'])}, "
+            f"proofs={len(impact['affected_proof_ids'])}, "
+            f"results={len(impact['affected_result_claim_ids'])})"
+        )
+    return "\n".join(lines)
+
+
 def run_reason(
     packs_dir: Path | None = None,
     csrf_file: Path | None = None,
@@ -4100,6 +4233,23 @@ def main(argv: list[str] | None = None) -> None:
     conflict_detect_parser = conflict_subparsers.add_parser("detect")
     conflict_detect_parser.add_argument("--pack", required=True, dest="pack_ref")
     conflict_detect_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    conflict_workflow_parser = conflict_subparsers.add_parser("workflow")
+    conflict_workflow_parser.add_argument("--pack", dest="pack_ref")
+    conflict_workflow_parser.add_argument("--packs", type=Path, dest="packs_dir")
+    conflict_workflow_parser.add_argument("--proof-index", type=Path, dest="proof_index_file")
+    conflict_workflow_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    conflict_impact_parser = conflict_subparsers.add_parser("impact")
+    conflict_impact_parser.add_argument("conflict_id")
+    conflict_impact_parser.add_argument("--report", required=True, type=Path, dest="report_file")
+    conflict_impact_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    conflict_export_parser = conflict_subparsers.add_parser("export-report")
+    conflict_export_parser.add_argument("--pack", dest="pack_ref")
+    conflict_export_parser.add_argument("--packs", type=Path, dest="packs_dir")
+    conflict_export_parser.add_argument("--proof-index", type=Path, dest="proof_index_file")
+    conflict_export_parser.add_argument("--output", required=True, type=Path, dest="output_file")
 
     reason_parser = subparsers.add_parser("reason")
     reason_parser.add_argument("--packs", type=Path, dest="packs_dir")
@@ -5493,6 +5643,35 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "conflict":
             if args.conflict_command == "detect":
                 print(run_conflict_detect(args.pack_ref, json_output=args.json_output))
+                return
+            if args.conflict_command == "workflow":
+                print(
+                    run_conflict_workflow(
+                        pack_ref=getattr(args, "pack_ref", None),
+                        packs_dir=getattr(args, "packs_dir", None),
+                        proof_index_file=getattr(args, "proof_index_file", None),
+                        json_output=args.json_output,
+                    )
+                )
+                return
+            if args.conflict_command == "impact":
+                print(
+                    run_conflict_impact(
+                        args.conflict_id,
+                        args.report_file,
+                        json_output=args.json_output,
+                    )
+                )
+                return
+            if args.conflict_command == "export-report":
+                print(
+                    run_conflict_export_report(
+                        pack_ref=getattr(args, "pack_ref", None),
+                        packs_dir=getattr(args, "packs_dir", None),
+                        output_file=args.output_file,
+                        proof_index_file=getattr(args, "proof_index_file", None),
+                    )
+                )
                 return
         if args.command == "parse":
             text = " ".join(args.text) if args.text else ""
