@@ -4101,6 +4101,115 @@ def run_policy_evaluate(policy_file: Path, relation: str, json_output: bool = Fa
     )
 
 
+def run_policy_exec_inspect(profile_file: Path, json_output: bool = False) -> str:
+    from vcse.policy.rules import ExecutionProfileLoadError, load_execution_profile
+
+    try:
+        profile = load_execution_profile(profile_file)
+    except ExecutionProfileLoadError as exc:
+        raise TrustError("PROFILE_LOAD_FAILED", str(exc)) from exc
+    payload = {
+        "profile_id": profile.profile_id,
+        "description": profile.description,
+        "rule_count": len(profile.rules),
+        "rules": [
+            {
+                "rule_id": r.rule_id,
+                "priority": r.priority,
+                "condition": f"{r.condition_field} {r.condition_op} {r.condition_value!r}",
+                "action": r.action,
+                "action_params": r.action_params,
+            }
+            for r in profile.rules
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        "status: PROFILE_INSPECTED",
+        f"profile_id: {payload['profile_id']}",
+        f"description: {payload['description']}",
+        f"rule_count: {payload['rule_count']}",
+    ]
+    if payload["rules"]:
+        lines.append("rules:")
+        for r in payload["rules"]:
+            lines.append(
+                f"  [{r['priority']:>3}] {r['rule_id']}: {r['condition']} → {r['action']}"
+            )
+    return "\n".join(lines)
+
+
+def run_policy_apply(pack_path: Path, profile_file: Path, json_output: bool = False) -> str:
+    from vcse.policy.engine import PolicyExecutionEngine
+    from vcse.policy.executor import PolicyExecutor
+    from vcse.policy.rules import ExecutionProfileLoadError, load_execution_profile
+    from vcse.trust.promoter import TrustPromoter
+
+    try:
+        profile = load_execution_profile(profile_file)
+    except ExecutionProfileLoadError as exc:
+        raise TrustError("PROFILE_LOAD_FAILED", str(exc)) from exc
+
+    claims_path = pack_path / "claims.jsonl"
+    if not claims_path.exists():
+        raise TrustError("MISSING_CLAIMS", f"missing claims.jsonl in {pack_path}")
+
+    from datetime import datetime, timezone as _tz
+
+    claims: list[dict] = []
+    for idx, line in enumerate(claims_path.read_text().splitlines(), start=1):
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        payload.setdefault("claim_id", f"claim:{idx}")
+        payload.setdefault("source_id", payload.get("provenance", {}).get("source_id", "unknown"))
+        payload.setdefault("created_at", datetime.now(_tz.utc).isoformat())
+        claims.append(payload)
+
+    executor = PolicyExecutor(promoter=TrustPromoter(), engine=PolicyExecutionEngine())
+    results = []
+    for claim in claims:
+        decision, exec_result = executor.run(claim, profile, support_count=1, conflict_count=0)
+        results.append({
+            "claim_id": decision.claim_id,
+            "trust_decision": {
+                "recommended_tier": decision.recommended_tier,
+                "verification_status": decision.verification_status,
+                "proof_count": decision.proof_count,
+                "blocking_issues": decision.blocking_issues,
+            },
+            "policy_execution": {
+                "rules_applied": exec_result.applied_rules,
+                "actions": exec_result.actions_taken,
+                "final_tier": exec_result.final_tier,
+                "annotations": exec_result.annotations,
+                "requires_review": exec_result.requires_review,
+                "blocked": exec_result.blocked,
+                "final_status": "BLOCKED" if exec_result.blocked else "PASSED",
+            },
+        })
+
+    payload = {
+        "pack": str(pack_path),
+        "profile_id": profile.profile_id,
+        "claim_count": len(results),
+        "results": results,
+    }
+    if json_output:
+        return json.dumps(payload, indent=2, sort_keys=True)
+    blocked = sum(1 for r in results if r["policy_execution"]["blocked"])
+    review = sum(1 for r in results if r["policy_execution"]["requires_review"])
+    lines = [
+        "status: POLICY_APPLIED",
+        f"profile_id: {profile.profile_id}",
+        f"claim_count: {len(results)}",
+        f"blocked: {blocked}",
+        f"requires_review: {review}",
+    ]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="vcse")
     parser.add_argument("--config")
@@ -4536,6 +4645,13 @@ def main(argv: list[str] | None = None) -> None:
     policy_evaluate_parser.add_argument("--policy", required=True, type=Path, dest="policy_file")
     policy_evaluate_parser.add_argument("--relation", required=True)
     policy_evaluate_parser.add_argument("--json", action="store_true", dest="json_output")
+    policy_apply_parser = policy_subparsers.add_parser("apply")
+    policy_apply_parser.add_argument("pack_path", type=Path)
+    policy_apply_parser.add_argument("--profile", required=True, type=Path, dest="profile_file")
+    policy_apply_parser.add_argument("--json", action="store_true", dest="json_output")
+    policy_exec_inspect_parser = policy_subparsers.add_parser("exec-inspect")
+    policy_exec_inspect_parser.add_argument("profile_file", type=Path)
+    policy_exec_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
 
     infer_parser = subparsers.add_parser("infer")
     infer_subparsers = infer_parser.add_subparsers(dest="infer_command")
@@ -5177,6 +5293,12 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if args.policy_command == "evaluate":
                 print(run_policy_evaluate(args.policy_file, args.relation, json_output=args.json_output))
+                return
+            if args.policy_command == "apply":
+                print(run_policy_apply(args.pack_path, args.profile_file, json_output=args.json_output))
+                return
+            if args.policy_command == "exec-inspect":
+                print(run_policy_exec_inspect(args.profile_file, json_output=args.json_output))
                 return
         if args.command == "infer":
             if args.infer_command == "inverse":
