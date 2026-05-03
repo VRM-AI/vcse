@@ -111,3 +111,19 @@ Design constraints:
 - provenance attached on every CMCF record
 - lifecycle `candidate`, verification `UNVERIFIED`, certification `NOT_CERTIFIED`
 - unknown formats are rejected (no silent guessing)
+
+## Trust Profile Layer (v6.2)
+
+Added deterministic trust profile subsystem:
+
+- `trust.profile`: profile/rule dataclasses
+- `trust.profile_loader`: JSON schema validation and deterministic load
+- `trust.profile_engine`: deterministic evaluation and self-certification gates
+- `trust.profile_result`: immutable decision/assessment outputs
+- `trust.profile_diff`: retroactive profile-to-profile decision diffing
+
+Runtime behavior:
+
+- Evaluates immutable CMCF records into derived trust decisions
+- Does not mutate canonical CMCF by default
+- Supports retroactive recomputation and auditability

@@ -54,3 +54,11 @@ VCSE remains the verifier-centered execution core.
 - Profile-based CMCF normalization (`historical_events`, `generic_records`)
 - `vcse ingest` integration with `--cmcf`, `--profile`, `--limit`, `--dry-run`
 - Candidate-only output policy enforcement (`UNVERIFIED`, `NOT_CERTIFIED`)
+
+## v6.2 Delivered
+
+- Configurable trust profiles with deterministic rule matching
+- Retroactive trust assessment for CMCF JSON/JSONL inputs
+- Trust decision diffing between profile versions
+- Explicit self-certification gates with downgrade-on-failure behavior
+- No default mutation of canonical CMCF records

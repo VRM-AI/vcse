@@ -138,3 +138,26 @@ Rules:
 - Local sources use legacy ingest unless `--cmcf` is provided.
 - Output records are candidate-only with `UNVERIFIED` and `NOT_CERTIFIED` status.
 - No auto-certification, no NLP/LLM logic, deterministic only.
+
+## Configurable Trust Profiles (v6.2.0)
+
+New CLI surface:
+
+- `vcse trust profile inspect <profile_file> [--json]`
+- `vcse trust profile apply <profile_file> --cmcf <file> [--json]`
+- `vcse trust profile apply <profile_file> --pack <pack_id> [--json]` (clean unsupported status for non-CMCF-native packs)
+- `vcse trust profile diff <old_profile> <new_profile> --cmcf <file> [--json]`
+
+Model separation:
+
+- `source_trust`: source eligibility policy
+- `claim_trust`: per-claim decision
+- `pack_trust`: aggregate assessment posture
+- `derived_trust`: minimum supporting trust tier (`min` rule, no averaging)
+
+Operational rules:
+
+- Deterministic exact matching only
+- No NLP/LLM/fuzzy/probabilistic logic
+- No canonical CMCF mutation by default
+- Self-certification requires explicit rule + gate success

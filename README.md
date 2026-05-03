@@ -573,3 +573,22 @@ Behavior rules:
 - Local sources use legacy ingest by default; pass `--cmcf` for universal intake.
 - Output is candidate-only (`lifecycle_status=candidate`, `verification_status=UNVERIFIED`, `certification_status=NOT_CERTIFIED`).
 - Deterministic only. No NLP/LLM extraction, no fuzzy matching, no auto-certification.
+
+## Configurable Trust Profiles (v6.2.0)
+
+VCSE v6.2.0 adds deterministic, policy-driven Trust Profiles for retroactive trust assessment over CMCF records.
+
+- CMCF records remain immutable facts-as-ingested.
+- Trust Profiles are maintainer policy.
+- Trust Assessments are derived outputs.
+- Candidate data remains usable but labeled.
+- Self-certification is explicit and fully gated.
+- No profile match defaults to `candidate` unless the profile changes `default_action`.
+
+Examples:
+
+```bash
+vcse trust profile inspect examples/trust_profiles/default_candidate_profile.json --json
+vcse trust profile apply examples/trust_profiles/historical_events_candidate_profile.json --cmcf events.cmcf.jsonl --json
+vcse trust profile diff old.json new.json --cmcf records.cmcf.jsonl --json
+```
