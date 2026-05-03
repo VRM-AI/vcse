@@ -1,0 +1,1 @@
+"""Universal source intake package."""
