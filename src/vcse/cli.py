@@ -4210,6 +4210,89 @@ def run_policy_apply(pack_path: Path, profile_file: Path, json_output: bool = Fa
     return "\n".join(lines)
 
 
+def _cmd_integrity(args: argparse.Namespace, subparsers: argparse.Action) -> str:
+    from vcse.integrity.keys import generate_ed25519_keypair, load_private_key, load_public_key, key_id
+    from vcse.integrity.signing import sign_data
+    from vcse.integrity.verify import verify_signature
+    from vcse.integrity.manifest import create_manifest
+    from cryptography.hazmat.primitives import serialization
+
+    cmd = args.integrity_command
+
+    if cmd == "keygen":
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        private_key, public_key = generate_ed25519_keypair()
+        priv_path = out / "ed25519_private.pem"
+        pub_path = out / "ed25519_public.pem"
+        priv_path.write_bytes(
+            private_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        pub_path.write_bytes(
+            public_key.public_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+        )
+        kid = key_id(public_key)
+        return json.dumps({"status": "ok", "key_id": kid, "private_key": str(priv_path), "public_key": str(pub_path)}, indent=2)
+
+    if cmd == "sign":
+        file_path = Path(args.file)
+        data = json.loads(file_path.read_text())
+        private_key = load_private_key(args.private_key)
+        block = sign_data(data, private_key)
+        return json.dumps({
+            "signature_status": "SIGNED",
+            "key_id": block.key_id,
+            "algorithm": block.algorithm,
+            "signed_hash": block.signed_hash,
+            "signature": block.signature,
+            "signature_id": block.signature_id,
+        }, indent=2)
+
+    if cmd == "verify":
+        file_path = Path(args.file)
+        sig_path = file_path.with_suffix(".sig.json")
+        if not sig_path.exists():
+            return json.dumps({"signature_status": "SIGNATURE_MISSING", "reason": f"no signature file: {sig_path}", "key_id": ""}, indent=2)
+        data = json.loads(file_path.read_text())
+        sig_data = json.loads(sig_path.read_text())
+        from vcse.integrity.model import SignatureBlock
+        block = SignatureBlock(
+            signature_id=sig_data.get("signature_id", ""),
+            algorithm=sig_data.get("algorithm", "ed25519"),
+            key_id=sig_data.get("key_id", ""),
+            signature=sig_data.get("signature", ""),
+            signed_hash=sig_data.get("signed_hash", ""),
+        )
+        public_key = load_public_key(args.public_key)
+        result = verify_signature(data, block, public_key)
+        return json.dumps({"signature_status": result.status, "reason": result.reason, "key_id": block.key_id}, indent=2)
+
+    if cmd == "manifest":
+        manifest = create_manifest(args.pack)
+        sig_path = Path(args.pack) / "manifest.json"
+        sig_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        return json.dumps({"status": "ok", "manifest_path": str(sig_path), "file_count": len(manifest["files"])}, indent=2)
+
+    if cmd == "verify-manifest":
+        manifest_path = Path(args.manifest)
+        pack_path = Path(args.pack_path)
+        saved = json.loads(manifest_path.read_text())
+        current = create_manifest(pack_path)
+        if saved.get("files") == current.get("files"):
+            return json.dumps({"signature_status": "SIGNATURE_VALID", "reason": "manifest matches", "key_id": ""}, indent=2)
+        return json.dumps({"signature_status": "SIGNATURE_INVALID", "reason": "manifest mismatch", "key_id": ""}, indent=2)
+
+    subparsers.print_help()  # type: ignore[union-attr]
+    return ""
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="vcse")
     parser.add_argument("--config")
@@ -4635,6 +4718,22 @@ def main(argv: list[str] | None = None) -> None:
     trust_profile_diff_parser.add_argument("new_profile", type=Path)
     trust_profile_diff_parser.add_argument("--cmcf", type=Path, required=True)
     trust_profile_diff_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    integrity_parser = subparsers.add_parser("integrity")
+    integrity_subparsers = integrity_parser.add_subparsers(dest="integrity_command")
+    integrity_keygen_parser = integrity_subparsers.add_parser("keygen")
+    integrity_keygen_parser.add_argument("--out", required=True, type=Path)
+    integrity_sign_parser = integrity_subparsers.add_parser("sign")
+    integrity_sign_parser.add_argument("file", type=Path)
+    integrity_sign_parser.add_argument("--key", required=True, type=Path, dest="private_key")
+    integrity_verify_parser = integrity_subparsers.add_parser("verify")
+    integrity_verify_parser.add_argument("file", type=Path)
+    integrity_verify_parser.add_argument("--key", required=True, type=Path, dest="public_key")
+    integrity_manifest_parser = integrity_subparsers.add_parser("manifest")
+    integrity_manifest_parser.add_argument("pack", type=Path)
+    integrity_verify_manifest_parser = integrity_subparsers.add_parser("verify-manifest")
+    integrity_verify_manifest_parser.add_argument("manifest", type=Path)
+    integrity_verify_manifest_parser.add_argument("--pack", required=True, type=Path, dest="pack_path")
 
     policy_parser = subparsers.add_parser("policy")
     policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
@@ -5786,6 +5885,10 @@ def main(argv: list[str] | None = None) -> None:
                 print(run_reasonops_report(args.path))
             else:
                 reasonops_subparsers.print_help()
+            return
+
+        if args.command == "integrity":
+            print(_cmd_integrity(args, integrity_subparsers))
             return
     except (
         ValueError,
