@@ -17,8 +17,11 @@ class FinalStatus(str, Enum):
 
 class VerificationStatus(str, Enum):
     VERIFIED = "VERIFIED"
+    NO_PROOF = "NO_PROOF"
+    INDETERMINATE = "INDETERMINATE"
     UNVERIFIED = "UNVERIFIED"
     FAILED = "FAILED"
+    ERROR = "ERROR"
 
 
 @dataclass
@@ -32,25 +35,32 @@ class FinalStateEvaluation:
     verifier_score: float = 0.0
 
     def __post_init__(self) -> None:
+        explicit_status = self.verification_status
         # Normalize proof trace and derived proof count so callers never receive None.
         self.proof_trace = list(self.proof_trace or [])
         self.proof_count = len(self.proof_trace)
-        self.verification_status = self._derive_verification_status()
         # Strict guard: never allow a VERIFIED final status without proofs.
         if self.status == FinalStatus.VERIFIED and self.proof_count == 0:
             self.status = FinalStatus.INCONCLUSIVE
-            if "No proof trace available" not in self.reasons:
-                self.reasons.append("No proof trace available")
+            if "NO_PROOF_TRACE_AVAILABLE" not in self.reasons:
+                self.reasons.append("NO_PROOF_TRACE_AVAILABLE")
+        self.verification_status = self._derive_verification_status(explicit_status)
 
     @property
     def proofs(self) -> list[str]:
         return list(self.proof_trace)
 
-    def _derive_verification_status(self) -> VerificationStatus:
+    def _derive_verification_status(self, explicit_status: VerificationStatus) -> VerificationStatus:
+        if explicit_status in {VerificationStatus.ERROR, VerificationStatus.INDETERMINATE}:
+            return explicit_status
         if self.status in {FinalStatus.CONTRADICTORY, FinalStatus.UNSATISFIABLE}:
             return VerificationStatus.FAILED
         if self.status == FinalStatus.VERIFIED and self.proof_count > 0:
             return VerificationStatus.VERIFIED
+        if self.proof_count == 0:
+            return VerificationStatus.NO_PROOF
+        if self.status == FinalStatus.INCONCLUSIVE:
+            return VerificationStatus.INDETERMINATE
         return VerificationStatus.UNVERIFIED
 
 

@@ -28,7 +28,7 @@ def test_verifier_returns_verified_when_proofs_exist() -> None:
 
 def test_verifier_returns_unverified_when_proof_set_empty() -> None:
     result = FinalStateEvaluation(status=FinalStatus.INCONCLUSIVE, answer="A is_a B", proof_trace=[])
-    assert result.verification_status == VerificationStatus.UNVERIFIED
+    assert result.verification_status == VerificationStatus.NO_PROOF
     assert result.proof_count == 0
     assert result.proofs == []
 
@@ -36,9 +36,9 @@ def test_verifier_returns_unverified_when_proof_set_empty() -> None:
 def test_zero_proof_is_not_marked_verified() -> None:
     result = FinalStateEvaluation(status=FinalStatus.VERIFIED, answer="A is_a B", proof_trace=[])
     assert result.status == FinalStatus.INCONCLUSIVE
-    assert result.verification_status == VerificationStatus.UNVERIFIED
+    assert result.verification_status == VerificationStatus.NO_PROOF
     assert result.proof_count == 0
-    assert "No proof trace available" in result.reasons
+    assert "NO_PROOF_TRACE_AVAILABLE" in result.reasons
 
 
 def test_contradiction_maps_to_failed_verification_status() -> None:
