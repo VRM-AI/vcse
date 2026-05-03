@@ -3,6 +3,7 @@
 from vcse.conflict.detector import ConflictDetector
 from vcse.conflict.impact import analyze_conflict_impact
 from vcse.conflict.model import Conflict
+from vcse.conflict.resolution import generate_resolution_options
 from vcse.conflict.workflow import (
     CONFLICT_WORKFLOW_COMPLETE,
     CONFLICT_WORKFLOW_FAILED,
@@ -27,6 +28,7 @@ __all__ = [
     "conflict_to_ref",
     "derive_refs_from_claims",
     "analyze_conflict_impact",
+    "generate_resolution_options",
     "CONFLICT_WORKFLOW_COMPLETE",
     "CONFLICT_WORKFLOW_NO_CONFLICTS",
     "CONFLICT_WORKFLOW_FAILED",
