@@ -197,7 +197,25 @@ CMCF records are:
 - suitable for signing
 - suitable for later compilation into `.csrf`
 
-`.csrf` is a future compiled runtime artifact derived from CMCF; it is not canonical truth.
+`.csrf` is the compiled runtime artifact derived from CMCF in v6.3.0; it is not canonical truth.
+
+### Compiled Runtime (.csrf)
+
+- Canonical truth remains CMCF (`cmcf_records.jsonl` / CMCF JSON).
+- `.csrf` is a deterministic compiled view with flattened records and indexes:
+  - `by_subject`
+  - `by_relation`
+  - `by_object`
+- Compilation does not alter claim meaning, trust, policy, or provenance linkage.
+
+Example:
+
+```bash
+vcse compile csrf cmcf_records.jsonl --output runtime.csrf
+vcse query --csrf runtime.csrf --subject France --relation has_capital --json
+vcse reason --csrf runtime.csrf --json --explain
+vcse runtime inspect runtime.csrf --json
+```
 
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl

@@ -62,3 +62,14 @@ VCSE remains the verifier-centered execution core.
 - Trust decision diffing between profile versions
 - Explicit self-certification gates with downgrade-on-failure behavior
 - No default mutation of canonical CMCF records
+
+## v6.3 Delivered
+
+- Added deterministic compiled runtime layer (`CMCF -> .csrf`)
+- Added indexed runtime model (`by_subject`, `by_relation`, `by_object`)
+- Added CLI support:
+  - `vcse compile csrf`
+  - `vcse query --csrf`
+  - `vcse reason --csrf`
+  - `vcse runtime inspect`
+- Added CSRF runtime tests for determinism, equivalence, and serialization

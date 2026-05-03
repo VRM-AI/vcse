@@ -51,7 +51,14 @@ vcse reason --packs examples/packs --json --explain
 - `.csrf` = `Compiled Symbolic Runtime Format`
 
 CMCF is the canonical deterministic record format for normalized claims.
-`.csrf` is a future compiled runtime format derived from CMCF and is not the canonical truth layer.
+`.csrf` is the deterministic compiled runtime format (v6.3.0) derived from CMCF and is not the canonical truth layer.
+
+### Compiled Runtime Commands
+
+- `vcse compile csrf <cmcf_file> --output <file.csrf> [--json]`
+- `vcse query --csrf <file.csrf> --subject ... [--relation ...] [--json]`
+- `vcse reason --csrf <file.csrf> [--trusted-only] [--policy <policy.json>] [--json]`
+- `vcse runtime inspect <file.csrf> [--json]`
 
 ## Endpoints
 

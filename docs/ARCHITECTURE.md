@@ -89,7 +89,7 @@ Input JSON / CLI demo
   broad inference or mutate packs/runtime stores.
 - Explanation rendering does not fabricate proof/provenance and does not alter
   result count or reasoning semantics.
-- `.csrf` (`Compiled Symbolic Runtime Format`) is a future compiled runtime
+- `.csrf` (`Compiled Symbolic Runtime Format`) is the v6.3.0 compiled runtime
   artifact derived from CMCF and does not replace canonical JSONL/CMCF truth.
 - Generated artifacts are accepted only after deterministic evaluation.
 
@@ -127,3 +127,16 @@ Runtime behavior:
 - Evaluates immutable CMCF records into derived trust decisions
 - Does not mutate canonical CMCF by default
 - Supports retroactive recomputation and auditability
+
+## Compiled Runtime Layer (v6.3)
+
+- `runtime.compiler`: deterministic CMCF -> CSRF compilation.
+- `runtime.serialize`: stable JSON `.csrf` save/load (`sort_keys`, compact separators, UTF-8, no NaN/Inf).
+- `runtime.loader`: runtime loading from `.csrf`, CMCF JSON/JSONL, or pack directories.
+- `runtime.index`: subject/relation/object index lookup helpers.
+
+Design constraints:
+
+- CMCF remains canonical source of truth.
+- CSRF remains fully reproducible from CMCF.
+- No semantic transformation or trust/policy mutation during compile.
