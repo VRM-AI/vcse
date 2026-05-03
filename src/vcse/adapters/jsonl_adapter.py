@@ -10,6 +10,9 @@ from vcse.adapters.json_adapter import _normalize_records
 
 
 class JSONLAdapter(SourceAdapter):
+    adapter_id = "jsonl_adapter"
+    supported_formats = ("jsonl",)
+
     def load(self, path: Path) -> list[dict]:
         rows: list[dict] = []
         for idx, line in enumerate(Path(path).read_text().splitlines(), start=1):

@@ -11,6 +11,9 @@ from vcse.adapters.json_adapter import _normalize_value
 
 
 class CSVAdapter(SourceAdapter):
+    adapter_id = "csv_adapter"
+    supported_formats = ("csv",)
+
     def load(self, path: Path) -> list[dict]:
         with Path(path).open(newline="") as handle:
             reader = csv.DictReader(handle)

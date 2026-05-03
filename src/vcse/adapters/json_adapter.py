@@ -10,11 +10,20 @@ from vcse.adapters.base import SourceAdapter
 
 
 class JSONAdapter(SourceAdapter):
+    adapter_id = "json_adapter"
+    supported_formats = ("json",)
+
     def load(self, path: Path) -> list[dict]:
         try:
             payload = json.loads(Path(path).read_text())
         except json.JSONDecodeError as exc:
             raise ValueError(f"MALFORMED_JSON: {exc.msg}") from exc
+        if isinstance(payload, dict):
+            for wrapper in ("result", "results", "data", "items"):
+                candidate = payload.get(wrapper)
+                if isinstance(candidate, list):
+                    payload = candidate
+                    break
         if not isinstance(payload, list):
             raise ValueError("INVALID_JSON: root must be a list of objects")
         rows: list[dict] = []

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from vcse.adapters.base import SourceAdapter
 from vcse.adapters.csv_adapter import CSVAdapter
+from vcse.adapters.html_table_adapter import HTMLTableAdapter
 from vcse.adapters.json_adapter import JSONAdapter
 from vcse.adapters.jsonl_adapter import JSONLAdapter
 
@@ -11,6 +12,7 @@ ADAPTERS: dict[str, SourceAdapter] = {
     "json": JSONAdapter(),
     "jsonl": JSONLAdapter(),
     "csv": CSVAdapter(),
+    "html_table": HTMLTableAdapter(),
 }
 
 
