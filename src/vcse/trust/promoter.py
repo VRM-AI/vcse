@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,8 @@ class TrustDecision:
     reasons: list[str] = field(default_factory=list)
     blocking_issues: list[str] = field(default_factory=list)
     ledger_events: list[LedgerEvent] = field(default_factory=list)
+    verification_status: str | None = None
+    proof_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class TrustReport:
                     "reasons": item.reasons,
                     "blocking_issues": item.blocking_issues,
                     "ledger_events": [event.to_dict() for event in item.ledger_events],
+                    "verification_status": item.verification_status,
+                    "proof_count": item.proof_count,
                 }
                 for item in self.decisions
             ],
@@ -136,6 +141,27 @@ class TrustPromoter:
         reasons: list[str] = []
         blockers: list[str] = []
         target = current_tier
+        verification_status_raw = claim.get("verification_status")
+        verification_status = (
+            str(getattr(verification_status_raw, "value", verification_status_raw)).strip().upper()
+            if verification_status_raw is not None
+            else None
+        )
+        proof_count_raw = claim.get("proof_count")
+        if proof_count_raw is None:
+            proof_trace = claim.get("proof_trace")
+            if isinstance(proof_trace, list):
+                proof_count = len(proof_trace)
+            else:
+                proof_count = 0
+        else:
+            try:
+                proof_count = max(0, int(proof_count_raw))
+            except (TypeError, ValueError):
+                proof_count = 0
+
+        verifier_confidence = _extract_verifier_confidence(claim)
+        confidence_present = verifier_confidence is not None
 
         has_provenance = bool(claim.get("provenance") or claim.get("source_id") or claim.get("source"))
         if current_tier == "T0_CANDIDATE" and has_provenance:
@@ -164,8 +190,21 @@ class TrustPromoter:
 
         if target == "T3_CROSS_SUPPORTED":
             if self.policy.require_verifier_consistency:
-                target = "T4_VERIFIER_CONSISTENT"
-                reasons.append("verifier consistency requirement assumed pass")
+                if verification_status is None:
+                    blockers.append("VERIFIER_RESULT_REQUIRED")
+                elif self.policy.require_positive_proof_count and proof_count < self.policy.min_proof_count:
+                    blockers.append("INSUFFICIENT_VERIFIER_PROOF_COUNT")
+                elif proof_count < 1:
+                    blockers.append("INSUFFICIENT_VERIFIER_PROOF_COUNT")
+                elif verification_status != "VERIFIED":
+                    blockers.append("VERIFICATION_STATUS_NOT_VERIFIED")
+                elif confidence_present and not _is_finite_number(verifier_confidence):
+                    blockers.append("NON_FINITE_VERIFIER_CONFIDENCE")
+                elif blockers:
+                    pass
+                else:
+                    target = "T4_VERIFIER_CONSISTENT"
+                    reasons.append("VERIFIER_CONSISTENCY_CONFIRMED")
             else:
                 target = "T4_VERIFIER_CONSISTENT"
 
@@ -206,6 +245,8 @@ class TrustPromoter:
             reasons=reasons,
             blocking_issues=blockers,
             ledger_events=events,
+            verification_status=verification_status,
+            proof_count=proof_count,
         )
 
     def evaluate_cluster(self, cluster: ClaimCluster) -> TrustDecision:
@@ -298,3 +339,19 @@ def _validate_transition_path(current_tier: str, target_tier: str) -> None:
     target_idx = order.index(target_tier)
     for idx in range(start_idx, target_idx):
         validate_transition(order[idx], order[idx + 1])
+
+
+def _extract_verifier_confidence(claim: dict[str, Any]) -> float | None:
+    for key in ("verifier_confidence", "verifier_score", "confidence"):
+        if key not in claim:
+            continue
+        value = claim.get(key)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float("nan")
+    return None
+
+
+def _is_finite_number(value: float | None) -> bool:
+    return value is not None and math.isfinite(value)

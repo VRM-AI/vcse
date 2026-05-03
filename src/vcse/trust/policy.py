@@ -20,9 +20,17 @@ class TrustPolicy:
     source_trust_threshold: float = 0.7
     min_independent_sources: int = 2
     require_verifier_consistency: bool = True
+    require_positive_proof_count: bool = True
+    min_proof_count: int = 1
     require_gauntlet_pass: bool = True
     allow_single_authoritative_source: bool = False
     high_risk_domain: bool = False
+
+    def __post_init__(self) -> None:
+        min_proof_count = max(0, int(self.min_proof_count))
+        if self.require_positive_proof_count and min_proof_count < 1:
+            min_proof_count = 1
+        object.__setattr__(self, "min_proof_count", min_proof_count)
 
 
 @dataclass(frozen=True)
@@ -60,6 +68,8 @@ def load_policy(path: str | Path | None) -> TrustPolicy:
         source_trust_threshold=float(payload.get("source_trust_threshold", 0.7)),
         min_independent_sources=int(payload.get("min_independent_sources", 2)),
         require_verifier_consistency=bool(payload.get("require_verifier_consistency", True)),
+        require_positive_proof_count=bool(payload.get("require_positive_proof_count", True)),
+        min_proof_count=int(payload.get("min_proof_count", 1)),
         require_gauntlet_pass=bool(payload.get("require_gauntlet_pass", True)),
         allow_single_authoritative_source=bool(payload.get("allow_single_authoritative_source", False)),
         high_risk_domain=bool(payload.get("high_risk_domain", False)),
