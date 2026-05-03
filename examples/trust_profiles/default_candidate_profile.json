@@ -1,0 +1,16 @@
+{
+  "trust_profile_id": "default_candidate_profile",
+  "description": "Default candidate-only trust profile.",
+  "default_action": "candidate",
+  "self_certification": {
+    "allowed": false,
+    "max_trust_tier": 0,
+    "requires_signature": false,
+    "requires_stable_source_hash": false,
+    "requires_provenance": false,
+    "requires_no_conflicts": false,
+    "requires_policy_allowed": false,
+    "requires_verification_status": null
+  },
+  "rules": []
+}

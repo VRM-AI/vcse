@@ -1,0 +1,35 @@
+{
+  "trust_profile_id": "government_open_data_profile",
+  "description": "Allow bounded self-certification for approved government open data sources.",
+  "default_action": "candidate",
+  "self_certification": {
+    "allowed": true,
+    "max_trust_tier": 4,
+    "requires_signature": false,
+    "requires_stable_source_hash": true,
+    "requires_provenance": true,
+    "requires_no_conflicts": true,
+    "requires_policy_allowed": true,
+    "requires_verification_status": "UNVERIFIED"
+  },
+  "rules": [
+    {
+      "rule_id": "allow_noaa_observation",
+      "action": "self_certify",
+      "match": {
+        "source_uri_prefix": "https://www.noaa.gov/"
+      },
+      "trust_tier": 4,
+      "reason": "Approved government observation source with deterministic provenance requirements."
+    },
+    {
+      "rule_id": "block_commentary",
+      "action": "block",
+      "match": {
+        "relation": "has_opinion"
+      },
+      "trust_tier": 0,
+      "reason": "Commentary-style claims are out of scope for this profile."
+    }
+  ]
+}

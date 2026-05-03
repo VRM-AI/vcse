@@ -1,0 +1,35 @@
+{
+  "trust_profile_id": "historical_events_candidate_profile",
+  "description": "Historical event intake remains candidate-first pending curator review.",
+  "default_action": "candidate",
+  "self_certification": {
+    "allowed": false,
+    "max_trust_tier": 0,
+    "requires_signature": false,
+    "requires_stable_source_hash": false,
+    "requires_provenance": false,
+    "requires_no_conflicts": false,
+    "requires_policy_allowed": false,
+    "requires_verification_status": null
+  },
+  "rules": [
+    {
+      "rule_id": "historical_description_candidate",
+      "action": "candidate",
+      "match": {
+        "relation": "has_description"
+      },
+      "trust_tier": 0,
+      "reason": "Descriptions remain candidate until manual review."
+    },
+    {
+      "rule_id": "historical_occurred_on_review",
+      "action": "review_required",
+      "match": {
+        "relation": "occurred_on"
+      },
+      "trust_tier": 0,
+      "reason": "Event dates require explicit curator review."
+    }
+  ]
+}

@@ -94,9 +94,13 @@ from vcse.trust import (
     TrustError,
     TrustPolicy,
     TrustPromoter,
+    TrustProfileEngine,
     certification_report_payload,
+    diff_trust_assessments,
     load_policy,
+    load_trust_profile,
 )
+from vcse.trust.profile_result import TrustAssessment
 from vcse.compression.metrics import compute_metrics as compression_compute_metrics
 from vcse.compression import (
     optimize_pack,
@@ -2082,6 +2086,69 @@ def _claims_from_source_or_pack(target: Path) -> tuple[list[dict], Path]:
     raise TrustError("UNSUPPORTED_INPUT", f"expected pack dir or .jsonl file: {target}")
 
 
+def _load_cmcf_records(path: Path):
+    from vcse.cmcf import record_from_dict
+
+    if not path.exists():
+        raise TrustError("CMCF_FILE_NOT_FOUND", f"file not found: {path}")
+    text = path.read_text()
+    stripped = text.strip()
+    if not stripped:
+        raise TrustError("CMCF_EMPTY_INPUT", "expected JSON object, JSON array, or JSONL records")
+    rows: list[dict] = []
+    if path.suffix.lower() == ".jsonl":
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            if not isinstance(payload, dict):
+                raise TrustError("CMCF_INVALID_JSONL_ROW", "row must be object")
+            rows.append(payload)
+    else:
+        payload = json.loads(text)
+        if isinstance(payload, dict):
+            rows.append(payload)
+        elif isinstance(payload, list):
+            for item in payload:
+                if not isinstance(item, dict):
+                    raise TrustError("CMCF_INVALID_JSON_ARRAY_ROW", "row must be object")
+                rows.append(item)
+        else:
+            raise TrustError("CMCF_INVALID_JSON_ROOT", "root must be object/list")
+    return [record_from_dict(row) for row in rows]
+
+
+def _trust_assessment_payload(assessment: TrustAssessment) -> dict[str, object]:
+    return {
+        "status": assessment.status,
+        "trust_profile_id": assessment.trust_profile_id,
+        "record_count": assessment.record_count,
+        "self_certified_count": assessment.self_certified_count,
+        "certified_count": assessment.certified_count,
+        "candidate_count": assessment.candidate_count,
+        "review_required_count": assessment.review_required_count,
+        "blocked_count": assessment.blocked_count,
+        "downgraded_count": assessment.downgraded_count,
+        "decisions": [
+            {
+                "status": item.status,
+                "action": item.action,
+                "trust_profile_id": item.trust_profile_id,
+                "matched_rule_id": item.matched_rule_id,
+                "subject": item.subject,
+                "relation": item.relation,
+                "object": item.object,
+                "claim_id": item.claim_id,
+                "source_uri": item.source_uri,
+                "trust_tier": item.trust_tier,
+                "reason": item.reason,
+                "issues": list(item.issues),
+            }
+            for item in assessment.decisions
+        ],
+    }
+
+
 def _resolve_trust_policy(policy_name_or_path: str | None) -> TrustPolicy:
     if policy_name_or_path is None or policy_name_or_path == "default_certification":
         return TrustPolicy()
@@ -2110,10 +2177,24 @@ def run_trust_certify(
     policy_name_or_path: str | None = None,
     policy_file: Path | None = None,
     output_pack_id: str | None = None,
+    trust_profile_file: Path | None = None,
     json_output: bool = False,
 ) -> str:
     policy = _resolve_trust_policy(policy_name_or_path)
     source_path = resolve_pack_path(pack_spec)
+    profile_assessment: TrustAssessment | None = None
+    if trust_profile_file is not None:
+        cmcf_path = source_path / "cmcf_records.jsonl"
+        if not cmcf_path.exists():
+            raise TrustError("TRUST_PROFILE_CMCF_MISSING", f"missing cmcf_records.jsonl in {source_path}")
+        profile = load_trust_profile(trust_profile_file)
+        profile_assessment = TrustProfileEngine.evaluate_records(_load_cmcf_records(cmcf_path), profile)
+        failing = [item for item in profile_assessment.decisions if item.action in {"block", "review_required", "downgrade"}]
+        if failing:
+            raise TrustError(
+                "TRUST_PROFILE_CERTIFICATION_BLOCKED",
+                f"profile {profile.trust_profile_id} blocked certification for {len(failing)} records",
+            )
     policy_set: PolicySet | None = None
     if policy_file is not None:
         try:
@@ -2141,6 +2222,8 @@ def run_trust_certify(
         report_path.write_text(json.dumps(certification_report_payload(result), indent=2, sort_keys=True) + "\n")
 
     payload = certification_report_payload(result)
+    if profile_assessment is not None:
+        payload["trust_profile_id"] = profile_assessment.trust_profile_id
     payload["pack_path"] = str(source_path)
     payload["output_pack_path"] = str(target_path) if output_pack_id else None
     payload["trust_report_path"] = str(report_path) if report_path is not None else None
@@ -2303,6 +2386,98 @@ def run_trust_stale(pack_path: Path, json_output: bool = False) -> str:
             "status: TRUST_STALE",
             f"total: {len(rows)}",
             f"stale: {len(stale_rows)}",
+        ]
+    )
+
+
+def run_trust_profile_inspect(profile_file: Path, json_output: bool = False) -> str:
+    profile = load_trust_profile(profile_file)
+    payload = {
+        "trust_profile_id": profile.trust_profile_id,
+        "description": profile.description,
+        "default_action": profile.default_action,
+        "rule_count": len(profile.rules),
+        "self_certification": {
+            "allowed": profile.self_certification.allowed,
+            "max_trust_tier": profile.self_certification.max_trust_tier,
+            "requires_signature": profile.self_certification.requires_signature,
+            "requires_stable_source_hash": profile.self_certification.requires_stable_source_hash,
+            "requires_provenance": profile.self_certification.requires_provenance,
+            "requires_no_conflicts": profile.self_certification.requires_no_conflicts,
+            "requires_policy_allowed": profile.self_certification.requires_policy_allowed,
+            "requires_verification_status": profile.self_certification.requires_verification_status,
+        },
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: TRUST_PROFILE_INSPECTED",
+            f"trust_profile_id: {payload['trust_profile_id']}",
+            f"default_action: {payload['default_action']}",
+            f"rule_count: {payload['rule_count']}",
+            f"self_certification_allowed: {payload['self_certification']['allowed']}",
+            f"self_certification_max_trust_tier: {payload['self_certification']['max_trust_tier']}",
+        ]
+    )
+
+
+def run_trust_profile_apply(
+    profile_file: Path,
+    cmcf_file: Path | None = None,
+    pack_id: str | None = None,
+    json_output: bool = False,
+) -> str:
+    if (cmcf_file is None) == (pack_id is None):
+        raise TrustError("TRUST_PROFILE_APPLY_ARGUMENT_ERROR", "use exactly one of --cmcf or --pack")
+    profile = load_trust_profile(profile_file)
+    if cmcf_file is None:
+        raise TrustError(
+            "TRUST_PROFILE_PACK_UNSUPPORTED",
+            "pack evaluation is unsupported for non-CMCF-native packs in v6.2; use --cmcf",
+        )
+    records = _load_cmcf_records(cmcf_file)
+    assessment = TrustProfileEngine.evaluate_records(records, profile)
+    payload = _trust_assessment_payload(assessment)
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"status: {payload['status']}",
+        f"trust_profile_id: {payload['trust_profile_id']}",
+        f"record_count: {payload['record_count']}",
+        f"self_certified_count: {payload['self_certified_count']}",
+        f"certified_count: {payload['certified_count']}",
+        f"candidate_count: {payload['candidate_count']}",
+        f"review_required_count: {payload['review_required_count']}",
+        f"blocked_count: {payload['blocked_count']}",
+        f"downgraded_count: {payload['downgraded_count']}",
+    ]
+    return "\n".join(lines)
+
+
+def run_trust_profile_diff(
+    old_profile_file: Path,
+    new_profile_file: Path,
+    cmcf_file: Path,
+    json_output: bool = False,
+) -> str:
+    records = _load_cmcf_records(cmcf_file)
+    old_assessment = TrustProfileEngine.evaluate_records(records, load_trust_profile(old_profile_file))
+    new_assessment = TrustProfileEngine.evaluate_records(records, load_trust_profile(new_profile_file))
+    payload = diff_trust_assessments(old_assessment, new_assessment)
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(
+        [
+            "status: TRUST_PROFILE_DIFF_COMPLETE",
+            f"old_profile_id: {payload['old_profile_id']}",
+            f"new_profile_id: {payload['new_profile_id']}",
+            f"changed_count: {payload['changed_count']}",
+            f"newly_self_certified: {payload['newly_self_certified']}",
+            f"newly_blocked: {payload['newly_blocked']}",
+            f"newly_review_required: {payload['newly_review_required']}",
+            f"trust_tier_changes: {payload['trust_tier_changes']}",
+            f"unchanged_count: {payload['unchanged_count']}",
         ]
     )
 
@@ -3941,6 +4116,7 @@ def main(argv: list[str] | None = None) -> None:
     trust_certify_parser.add_argument("pack_id")
     trust_certify_parser.add_argument("--policy", default="default_certification")
     trust_certify_parser.add_argument("--policy-file", type=Path, dest="policy_file")
+    trust_certify_parser.add_argument("--trust-profile", type=Path, dest="trust_profile_file")
     trust_certify_parser.add_argument("--output", dest="output_pack_id")
     trust_certify_parser.add_argument("--json", action="store_true", dest="json_output")
     trust_inspect_parser = trust_subparsers.add_parser("inspect")
@@ -3965,6 +4141,21 @@ def main(argv: list[str] | None = None) -> None:
     trust_stale_parser = trust_subparsers.add_parser("stale")
     trust_stale_parser.add_argument("target")
     trust_stale_parser.add_argument("--json", action="store_true", dest="json_output")
+    trust_profile_parser = trust_subparsers.add_parser("profile")
+    trust_profile_subparsers = trust_profile_parser.add_subparsers(dest="trust_profile_command")
+    trust_profile_inspect_parser = trust_profile_subparsers.add_parser("inspect")
+    trust_profile_inspect_parser.add_argument("profile_file", type=Path)
+    trust_profile_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+    trust_profile_apply_parser = trust_profile_subparsers.add_parser("apply")
+    trust_profile_apply_parser.add_argument("profile_file", type=Path)
+    trust_profile_apply_parser.add_argument("--cmcf", type=Path)
+    trust_profile_apply_parser.add_argument("--pack")
+    trust_profile_apply_parser.add_argument("--json", action="store_true", dest="json_output")
+    trust_profile_diff_parser = trust_profile_subparsers.add_parser("diff")
+    trust_profile_diff_parser.add_argument("old_profile", type=Path)
+    trust_profile_diff_parser.add_argument("new_profile", type=Path)
+    trust_profile_diff_parser.add_argument("--cmcf", type=Path, required=True)
+    trust_profile_diff_parser.add_argument("--json", action="store_true", dest="json_output")
 
     policy_parser = subparsers.add_parser("policy")
     policy_subparsers = policy_parser.add_subparsers(dest="policy_command")
@@ -4531,6 +4722,7 @@ def main(argv: list[str] | None = None) -> None:
                         policy_name_or_path=args.policy,
                         policy_file=args.policy_file,
                         output_pack_id=args.output_pack_id,
+                        trust_profile_file=args.trust_profile_file,
                         json_output=args.json_output,
                     )
                 )
@@ -4561,6 +4753,30 @@ def main(argv: list[str] | None = None) -> None:
             if args.trust_command == "stale":
                 print(run_trust_stale(Path(args.target), json_output=args.json_output))
                 return
+            if args.trust_command == "profile":
+                if args.trust_profile_command == "inspect":
+                    print(run_trust_profile_inspect(args.profile_file, json_output=args.json_output))
+                    return
+                if args.trust_profile_command == "apply":
+                    print(
+                        run_trust_profile_apply(
+                            args.profile_file,
+                            cmcf_file=args.cmcf,
+                            pack_id=args.pack,
+                            json_output=args.json_output,
+                        )
+                    )
+                    return
+                if args.trust_profile_command == "diff":
+                    print(
+                        run_trust_profile_diff(
+                            args.old_profile,
+                            args.new_profile,
+                            args.cmcf,
+                            json_output=args.json_output,
+                        )
+                    )
+                    return
         if args.command == "policy":
             if args.policy_command == "inspect":
                 print(run_policy_inspect(args.policy_file, json_output=args.json_output))
