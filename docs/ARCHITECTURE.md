@@ -140,3 +140,23 @@ Design constraints:
 - CMCF remains canonical source of truth.
 - CSRF remains fully reproducible from CMCF.
 - No semantic transformation or trust/policy mutation during compile.
+
+## Proof Index Layer (v6.4)
+
+- `proof.model`: `ProofStep`, `ProofPath`, `ProofIndex` dataclasses.
+- `proof.compiler`: deterministic compilation of proof paths from CSRF and from
+  reasoning records (`derived_from` + `proofs`).
+- `proof.index`: builder that emits ordered `ProofIndex` and reverse-dependency
+  maps (`by_result`, `by_support`, `by_subject`, `by_relation`, `by_object`).
+- `proof.serialize`: deterministic JSON (`.proof.json`) save/load.
+- `proof.loader`: file-based load and `load_or_build_proof_index` helper.
+- `proof.explain`: `select_best_proof` + `proof_path_to_explanation_trace`.
+
+Design constraints:
+
+- Proof index is derived; it never creates new truth.
+- Zero-proof results are never promoted to `VERIFIED`.
+- Proof ordering is deterministic: verification status, path length, trust tier,
+  lexicographic `proof_id`.
+- `.proof.json` is disposable and rebuildable from CMCF/.csrf.
+

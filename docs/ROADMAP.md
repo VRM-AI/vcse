@@ -73,3 +73,20 @@ VCSE remains the verifier-centered execution core.
   - `vcse reason --csrf`
   - `vcse runtime inspect`
 - Added CSRF runtime tests for determinism, equivalence, and serialization
+
+## v6.4 Delivered
+
+- Proof index data models (`ProofStep`, `ProofPath`, `ProofIndex`)
+- Deterministic proof compiler (`compile_proofs_from_csrf`, `compile_proofs_from_records`)
+- Reverse dependency graph (`by_support`)
+- Proof index serialization (`.proof.json`) and loader
+- Proof-aware explanation acceleration (`select_best_proof`, `proof_path_to_explanation_trace`)
+- CLI:
+  - `vcse proof build`
+  - `vcse proof why`
+  - `vcse proof supports`
+  - `vcse proof inspect`
+  - `vcse query --proof-index`
+  - `vcse reason --proof-index`
+- Proof index never creates new truth; CMCF remains canonical, `.proof.json` is disposable
+

@@ -168,3 +168,35 @@ Operational rules:
 - No NLP/LLM/fuzzy/probabilistic logic
 - No canonical CMCF mutation by default
 - Self-certification requires explicit rule + gate success
+
+## Proof Index (v6.4.0)
+
+CLI commands:
+
+- `vcse proof build --csrf <file.csrf> --output <file.proof.json> [--json]`
+- `vcse proof why <claim_id> --proof-index <file.proof.json> [--json]`
+- `vcse proof supports <claim_id> --proof-index <file.proof.json> [--json]`
+- `vcse proof inspect <file.proof.json> [--json]`
+
+Query / reason integration:
+
+- `vcse query ... --proof-index <file.proof.json> --explain`
+- `vcse reason ... --proof-index <file.proof.json> --explain`
+
+When supplied, the proof index accelerates and augments explanation traces under
+`proof_index_traces`. Result counts, inferred-claim counts, and reasoning output
+remain identical to runs without the proof index.
+
+Programmatic API (`vcse.proof`):
+
+- `compile_proofs_from_csrf(csrf) -> ProofIndex`
+- `compile_proofs_from_records(records) -> ProofIndex`
+- `save_proof_index(index, path)` / `load_proof_index(path)`
+- `select_best_proof(index, claim_id) -> ProofPath | None`
+- `proof_path_to_explanation_trace(proof) -> dict`
+
+Rules:
+
+- Deterministic only; no fabricated proofs or VERIFIED zero-proof results.
+- `.proof.json` is disposable — never committed unless an explicit fixture.
+

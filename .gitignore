@@ -22,6 +22,7 @@ examples/packs/*_snapshot_*/
 # VCSE runtime stores
 .vcse/runtime_stores/
 *.csrf
+*.proof.json
 *.vcseidx
 *.vcsebin
 *.vcsemap

@@ -217,6 +217,24 @@ vcse reason --csrf runtime.csrf --json --explain
 vcse runtime inspect runtime.csrf --json
 ```
 
+## Proof Indexing (v6.4.0)
+
+`.proof.json` is a deterministic compiled proof index over CMCF/.csrf data:
+
+- Indexes proof paths VCSE can already derive (no new truth).
+- Provides reverse-dependency lookups (`by_support`) for impact reasoning.
+- Accelerates `--explain` output without changing result/inferred counts.
+
+```bash
+vcse proof build --csrf runtime.csrf --output runtime.proof.json --json
+vcse proof why <claim_id> --proof-index runtime.proof.json --json
+vcse proof supports <claim_id> --proof-index runtime.proof.json --json
+vcse query --csrf runtime.csrf --subject France --explain --proof-index runtime.proof.json --json
+vcse reason --csrf runtime.csrf --explain --proof-index runtime.proof.json --json
+```
+
+`.proof.json` is disposable; CMCF remains canonical.
+
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl
 vcse benchmark benchmarks/arithmetic_cases.jsonl
