@@ -235,6 +235,21 @@ vcse reason --csrf runtime.csrf --explain --proof-index runtime.proof.json --jso
 
 `.proof.json` is disposable; CMCF remains canonical.
 
+## Conflict Resolution Workflows (v6.5.0)
+
+Conflicts become reviewable operational objects with deterministic, non-mutating
+workflows backed by the proof reverse-dependency graph:
+
+- `keep_a`, `keep_b`, `mark_disputed`, `require_review` resolution options.
+- Trust-aware rationale (`recommended_by_trust`) — never auto-applied.
+- Workflow reports are JSON-stable and maintainer-controlled.
+
+```bash
+vcse conflict workflow --pack mypack --proof-index runtime.proof.json --json
+vcse conflict export-report --packs ./packs --proof-index runtime.proof.json --output report.json
+vcse conflict impact <conflict_id> --report report.json --json
+```
+
 ```bash
 vcse benchmark benchmarks/simple_logic_cases.jsonl
 vcse benchmark benchmarks/arithmetic_cases.jsonl

@@ -200,3 +200,25 @@ Rules:
 - Deterministic only; no fabricated proofs or VERIFIED zero-proof results.
 - `.proof.json` is disposable — never committed unless an explicit fixture.
 
+## Conflict Resolution Workflows (v6.5.0)
+
+CLI commands:
+
+- `vcse conflict workflow --pack <pack> [--proof-index <file>] [--json]`
+- `vcse conflict workflow --packs <dir> [--proof-index <file>] [--json]`
+- `vcse conflict impact <conflict_id> --report <workflow_report.json> [--json]`
+- `vcse conflict export-report --pack <pack> [--proof-index <file>] --output <report.json>`
+
+Programmatic API (`vcse.conflict`):
+
+- `compute_conflict_id(subject, relation, object_a, object_b, claim_ids)`
+- `derive_refs_from_claims(conflicts, claims) -> tuple[ConflictRef, ...]`
+- `analyze_conflict_impact(refs, proof_index) -> tuple[ConflictImpact, ...]`
+- `generate_resolution_options(ref, impact) -> tuple[ResolutionOption, ...]`
+- `build_conflict_workflow_report(refs, proof_index) -> ConflictWorkflowReport`
+- `conflict_workflow_report_to_dict(report) -> dict`
+
+Resolution options always include `keep_a`, `keep_b`, `mark_disputed`, and
+`require_review`; trust-tier comparisons appear as `recommended_by_trust`
+annotations only. No option is ever auto-applied; `ConflictDetector` and CMCF/.csrf
+data remain unchanged.

@@ -90,3 +90,16 @@ VCSE remains the verifier-centered execution core.
   - `vcse reason --proof-index`
 - Proof index never creates new truth; CMCF remains canonical, `.proof.json` is disposable
 
+## v6.5 Delivered
+
+- Conflict workflow data models (`ConflictRef`, `ConflictImpact`, `ResolutionOption`, `ConflictWorkflowReport`)
+- Deterministic conflict identity (`compute_conflict_id`)
+- Impact analysis using proof reverse dependencies (`analyze_conflict_impact`)
+- Resolution option generation (`keep_a`, `keep_b`, `mark_disputed`, `require_review`)
+- Trust-aware option annotation (recommendation only, never auto-applied)
+- Workflow report builder + serializer
+- CLI:
+  - `vcse conflict workflow --pack` / `--packs`
+  - `vcse conflict impact <id> --report`
+  - `vcse conflict export-report`
+- No automatic conflict resolution; maintainer-controlled review

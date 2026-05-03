@@ -160,3 +160,21 @@ Design constraints:
   lexicographic `proof_id`.
 - `.proof.json` is disposable and rebuildable from CMCF/.csrf.
 
+## Conflict Resolution Workflows (v6.5)
+
+- `conflict.workflow`: `ConflictRef`, `ConflictImpact`, `ResolutionOption`,
+  `ConflictWorkflowReport`, deterministic `conflict_id` hashing, conflict-to-ref
+  conversion, and claim annotation helpers.
+- `conflict.impact`: `analyze_conflict_impact` walks the proof reverse-dependency
+  graph; falls back to direct-only impact when no proof index is supplied.
+- `conflict.resolution`: deterministic option generator emitting `keep_a`,
+  `keep_b`, `mark_disputed`, `require_review` with trust-aware rationale.
+- `conflict.report`: `build_conflict_workflow_report` orchestrates analysis and
+  yields a sorted, serialisable report.
+
+Design constraints:
+
+- No conflict is ever auto-resolved.
+- Trust-tier comparisons appear in option rationale only as
+  `recommended_by_trust`; nothing is selected automatically.
+- Existing `ConflictDetector` outputs and CMCF/.csrf data are never mutated.
