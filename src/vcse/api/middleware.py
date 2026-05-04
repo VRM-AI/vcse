@@ -11,7 +11,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from vcse.api.errors import APIError, error_payload
+from vcse.api.config import API_VERSION
+from vcse.api.errors import APIError, OperationalError, error_payload
 from vcse.perf import stage
 
 
@@ -21,7 +22,8 @@ _LOG = logging.getLogger("vcse.api")
 def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, timeout_seconds: float = 30.0) -> None:
     @app.middleware("http")
     async def request_context(request: Request, call_next):
-        request_id = uuid.uuid4().hex
+        incoming_id = request.headers.get("x-request-id")
+        request_id = incoming_id if incoming_id else uuid.uuid4().hex
         request.state.request_id = request_id
         started = perf_counter()
 
@@ -65,6 +67,20 @@ def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, 
             },
         )
         return response
+
+    @app.exception_handler(OperationalError)
+    async def handle_operational_error(request: Request, exc: OperationalError) -> JSONResponse:
+        request_id = getattr(getattr(request, "state", None), "request_id", "")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "status": "ERROR",
+                "version": API_VERSION,
+                "request_id": request_id,
+                "data": {},
+                "errors": [{"code": exc.code, "message": exc.message, "path": exc.path, "details": {}}],
+            },
+        )
 
     @app.exception_handler(APIError)
     async def handle_api_error(request: Request, exc: APIError) -> JSONResponse:

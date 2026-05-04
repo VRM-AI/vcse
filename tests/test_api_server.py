@@ -23,6 +23,14 @@ def test_create_app_returns_fastapi() -> None:
     assert isinstance(app, FastAPI)
 
 
+# --- Test 6: request_id echoed from X-Request-ID header ---
+def test_request_id_echoed_from_header() -> None:
+    resp = _client().get("/health", headers={"X-Request-ID": "my-test-id-123"})
+    assert resp.headers.get("X-Request-ID") == "my-test-id-123"
+    payload = resp.json()
+    assert payload["request_id"] == "my-test-id-123"
+
+
 # --- Test 16: all machine statuses are UPPER_SNAKE_CASE ---
 def test_health_status_is_upper_snake_case() -> None:
     resp = _client().get("/health")
