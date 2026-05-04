@@ -159,3 +159,18 @@ def test_proof_validate_invalid_returns_error() -> None:
         assert payload["errors"]
     finally:
         Path(bad_path).unlink(missing_ok=True)
+
+
+# --- Test 11: bundle verify endpoint returns structured bundle result ---
+def test_bundle_verify_returns_structured_result() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        # No manifest.json → expect BUNDLE_ERROR (not a server crash)
+        resp = _client().post("/pack/verify-bundle", json={"bundle_path": tmp})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "OK"
+    assert "bundle_status" in payload["data"]
+    assert payload["data"]["bundle_status"] in (
+        "BUNDLE_VALID", "BUNDLE_INVALID", "BUNDLE_UNSIGNED",
+        "BUNDLE_TAMPERED", "BUNDLE_ERROR",
+    )
