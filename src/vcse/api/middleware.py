@@ -11,8 +11,13 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from vcse.api.config import API_VERSION
-from vcse.api.errors import APIError, OperationalError, error_payload
+from vcse.api.errors import (
+    API_INTERNAL_ERROR,
+    API_INVALID_REQUEST,
+    APIError,
+    OperationalError,
+)
+from vcse.api.models import make_error_response
 from vcse.perf import stage
 
 
@@ -20,6 +25,10 @@ _LOG = logging.getLogger("vcse.api")
 
 
 def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, timeout_seconds: float = 30.0) -> None:
+    def _request_id_header(request: Request) -> dict[str, str]:
+        request_id = getattr(getattr(request, "state", None), "request_id", "")
+        return {"X-Request-ID": request_id} if request_id else {}
+
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         incoming_id = request.headers.get("x-request-id")
@@ -33,10 +42,11 @@ def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, 
                 if int(content_length) > max_request_bytes:
                     return JSONResponse(
                         status_code=413,
-                        content=error_payload(
-                            "REQUEST_TOO_LARGE",
+                        content=make_error_response(
+                            request,
+                            API_INVALID_REQUEST,
                             "Request body exceeds configured limit",
-                            "REQUEST_TOO_LARGE",
+                            "body",
                         ),
                         headers={"X-Request-ID": request_id},
                     )
@@ -49,7 +59,11 @@ def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, 
         except asyncio.TimeoutError:
             return JSONResponse(
                 status_code=504,
-                content=error_payload("REQUEST_TIMEOUT", "Request timed out", "REQUEST_TIMEOUT"),
+                content=make_error_response(
+                    request,
+                    API_INVALID_REQUEST,
+                    "Request timed out",
+                ),
                 headers={"X-Request-ID": request_id},
             )
 
@@ -70,30 +84,26 @@ def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, 
 
     @app.exception_handler(OperationalError)
     async def handle_operational_error(request: Request, exc: OperationalError) -> JSONResponse:
-        request_id = getattr(getattr(request, "state", None), "request_id", "")
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "status": "ERROR",
-                "version": API_VERSION,
-                "request_id": request_id,
-                "data": {},
-                "errors": [{"code": exc.code, "message": exc.message, "path": exc.path, "details": {}}],
-            },
+            content=make_error_response(request, exc.code, exc.message, exc.path),
+            headers=_request_id_header(request),
         )
 
     @app.exception_handler(APIError)
     async def handle_api_error(request: Request, exc: APIError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_payload(exc.error_type, exc.message, exc.code),
+            content=make_error_response(request, exc.code, exc.message),
+            headers=_request_id_header(request),
         )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=400,
-            content=error_payload("INVALID_REQUEST", "Malformed request payload", "INVALID_REQUEST"),
+            content=make_error_response(request, API_INVALID_REQUEST, "Malformed request payload"),
+            headers=_request_id_header(request),
         )
 
     @app.exception_handler(Exception)
@@ -107,5 +117,6 @@ def install_error_handlers(app: FastAPI, *, max_request_bytes: int = 1_000_000, 
         )
         return JSONResponse(
             status_code=500,
-            content=error_payload("INTERNAL_ERROR", "Internal server error", "INTERNAL_ERROR"),
+            content=make_error_response(request, API_INTERNAL_ERROR, "Internal server error"),
+            headers=_request_id_header(request),
         )

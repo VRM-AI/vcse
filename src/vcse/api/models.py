@@ -22,12 +22,16 @@ def make_ok_response(request: Any, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def make_error_response(
-    request: Any, code: str, message: str, path: str = ""
+    request: Any,
+    code: str,
+    message: str,
+    path: str = "",
+    details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "status": "ERROR",
         "version": API_VERSION,
         "request_id": _get_request_id(request),
         "data": {},
-        "errors": [{"code": code, "message": message, "path": path, "details": {}}],
+        "errors": [{"code": code, "message": message, "path": path, "details": details or {}}],
     }
