@@ -6,9 +6,10 @@ import json
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
+from vcse.api.errors import APIError
 from vcse.api.server import create_app
 from vcse import __version__
 
@@ -236,3 +237,77 @@ def test_no_raw_traceback_in_error_response() -> None:
     assert "Traceback" not in payload_str
     assert "traceback" not in payload_str
     assert 'File "' not in payload_str
+
+
+def _error_contract_client() -> TestClient:
+    app = create_app()
+    router = APIRouter()
+
+    @router.get("/_test/api-error")
+    def _raise_api_error() -> dict:
+        raise APIError("INVALID_REQUEST", "synthetic api error", "API_INVALID_REQUEST", 400)
+
+    @router.get("/_test/internal-error")
+    def _raise_internal_error() -> dict:
+        raise RuntimeError("synthetic internal error")
+
+    app.include_router(router)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _assert_unified_error_contract(payload: dict) -> None:
+    assert payload["status"] == "ERROR"
+    assert payload["version"] == __version__
+    assert "request_id" in payload
+    assert isinstance(payload["request_id"], str)
+    assert payload["request_id"]
+    assert payload["data"] == {}
+    assert isinstance(payload["errors"], list)
+    assert payload["errors"]
+    assert "error" not in payload
+
+
+def test_request_validation_error_uses_unified_contract() -> None:
+    resp = _client().post("/runtime/validate", json={})
+    assert resp.status_code == 400
+    payload = resp.json()
+    _assert_unified_error_contract(payload)
+    assert payload["errors"][0]["code"] == "API_INVALID_REQUEST"
+
+
+def test_malformed_runtime_request_uses_unified_contract() -> None:
+    resp = _client().post(
+        "/runtime/validate",
+        content='{"csrf_path":',
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 400
+    payload = resp.json()
+    _assert_unified_error_contract(payload)
+    assert payload["errors"][0]["code"] == "API_INVALID_REQUEST"
+
+
+def test_api_error_handler_uses_unified_contract() -> None:
+    client = _error_contract_client()
+    resp = client.get("/_test/api-error")
+    assert resp.status_code == 400
+    payload = resp.json()
+    _assert_unified_error_contract(payload)
+    assert payload["errors"][0]["code"] == "API_INVALID_REQUEST"
+
+
+def test_internal_error_handler_uses_api_internal_error_contract() -> None:
+    client = _error_contract_client()
+    req_id = "err-req-001"
+    resp = client.get("/_test/internal-error", headers={"X-Request-ID": req_id})
+    assert resp.status_code == 500
+    assert resp.headers.get("X-Request-ID") == req_id
+    payload = resp.json()
+    _assert_unified_error_contract(payload)
+    assert payload["request_id"] == req_id
+    assert payload["errors"][0]["code"] == "API_INTERNAL_ERROR"
+    assert payload["errors"][0]["message"] == "Internal server error"
+    payload_text = json.dumps(payload)
+    assert "Traceback" not in payload_text
+    assert "traceback" not in payload_text
+    assert "synthetic internal error" not in payload_text

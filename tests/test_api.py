@@ -153,5 +153,7 @@ def test_invalid_input_returns_structured_error() -> None:
     response = client.post('/v1/chat/completions', json={})
     assert response.status_code == 400
     payload = response.json()
-    assert 'error' in payload
-    assert payload['error']['type'] == 'INVALID_REQUEST'
+    assert payload["status"] == "ERROR"
+    assert payload["data"] == {}
+    assert isinstance(payload["errors"], list)
+    assert payload["errors"]
