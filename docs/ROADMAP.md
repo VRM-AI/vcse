@@ -122,3 +122,15 @@ VCSE remains the verifier-centered execution core.
 - Benchmark is measurement-only — no hard timing thresholds in v6.9
 - All validation failures are explicit and structured (UPPER_SNAKE_CASE codes)
 - No correctness shortcuts introduced; verifier/trust invariants unchanged
+
+## v6.10.0 — API/Server Hardening + Operational Interface
+
+- Operational HTTP API surface alongside OpenAI-compat adapter
+- Health/readiness/liveness probes (GET /health, /ready, /live)
+- Unified VcseResponse contract (status, version, request_id, data, errors)
+- Error responses use UPPER_SNAKE_CASE codes, no raw tracebacks
+- Validation endpoints: POST /runtime/validate, /proof/validate, /pack/verify-bundle
+- Query endpoint: POST /query for structured deterministic queries over .csrf
+- X-Request-ID header echo support for request tracing
+- /reason endpoint deferred to v6.11
+- All endpoints deterministic, non-mutating, never auto-certifying

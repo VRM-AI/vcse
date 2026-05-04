@@ -221,3 +221,18 @@ Design constraints:
 ### Performance Benchmark (`vcse.perf.benchmark`)
 
 `run_runtime_benchmark(csrf_path, ...)` measures LOAD_CSRF, QUERY_SUBJECT/RELATION/OBJECT, PROOF_LOOKUP operations. Returns a `BenchmarkReport` with per-operation `elapsed_ms`. No hard timing thresholds — v6.9 establishes measurement infrastructure only.
+
+## Operational API Layer (v6.10.0)
+
+- `api.server`: HTTP server binds to `127.0.0.1:8000` by default.
+- `api.endpoints`: health, version, readiness, liveness, runtime/proof/bundle validation, structured query.
+- `api.response`: unified `VcseResponse` contract with `status`, `version`, `request_id`, `data`, `errors`.
+- `api.errors`: machine-readable UPPER_SNAKE_CASE error codes, no raw tracebacks.
+- `api.xheader`: `X-Request-ID` echo support for request tracing.
+
+Design constraints:
+
+- Never auto-certifies or bypasses verifier/trust.
+- No remote key lookup, no LLM logic.
+- Signature validity ≠ truth (structural integrity only).
+- All responses deterministic and non-mutating.

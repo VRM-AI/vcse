@@ -262,3 +262,52 @@ from vcse.perf.report import benchmark_report_to_json
 Validation results use `status: RUNTIME_VALID | RUNTIME_INVALID | RUNTIME_ERROR`.
 Benchmark reports use `status: BENCHMARK_COMPLETE | BENCHMARK_FAILED`.
 All machine values are UPPER_SNAKE_CASE. No NaN/Inf in any serialized output.
+
+## Operational API Interface (v6.10.0)
+
+VCSE exposes a local-first operational HTTP interface alongside the OpenAI-compat `/v1/*` adapter.
+
+### Default binding
+
+`vcse serve` binds to `127.0.0.1:8000` by default. Override with `--host` and `--port`.
+
+### Response contract
+
+All operational endpoints return:
+```json
+{
+  "status": "OK",
+  "version": "6.10.0",
+  "request_id": "...",
+  "data": {},
+  "errors": []
+}
+```
+- `status`: `"OK"` or `"ERROR"` (always UPPER_SNAKE_CASE)
+- `errors[].code`: machine code, e.g. `API_NOT_FOUND`, `API_RUNTIME_INVALID`
+- No raw tracebacks exposed in responses
+- `X-Request-ID` header echoed if sent
+
+### Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Service health |
+| GET | `/version` | VCSE version + Python version |
+| GET | `/ready` | Readiness probe |
+| GET | `/live` | Liveness probe |
+| POST | `/runtime/validate` | Validate `.csrf` artifact by path |
+| POST | `/proof/validate` | Validate `.proof.json` index by path |
+| POST | `/pack/verify-bundle` | Verify `.vcsepack` bundle integrity |
+| POST | `/query` | Structured query over `.csrf` runtime |
+| POST | `/reason` | Not yet available (v6.11) |
+
+### Invariants
+
+The API never:
+- auto-certifies or auto-trusts any data
+- bypasses verifier or trust promotion logic
+- exposes private keys or performs remote key lookup
+- introduces probabilistic or LLM-based logic
+
+Bundle signature validity is not truth. `BUNDLE_VALID` means structurally sound + signatures match; it does not certify claims.

@@ -111,6 +111,23 @@ vcse pipeline run examples/pipelines/geography_compile.yaml --run-id test_geogra
 vcse pipeline inspect test_geography_pipeline --json
 vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
+```
+
+## Operational API Server (v6.10.0)
+
+`vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
+
+Operational endpoints for health, readiness, runtime/proof/bundle validation, and structured queries:
+- `/health` — service health status
+- `/version` — VCSE and Python versions
+- `/ready` — readiness probe
+- `/live` — liveness probe
+- `/runtime/validate` — validate `.csrf` artifact
+- `/proof/validate` — validate `.proof.json` index
+- `/pack/verify-bundle` — verify `.vcsepack` bundle integrity
+- `/query` — structured deterministic query over `.csrf` runtime
+
+See [docs/API.md](docs/API.md) for response contract and examples.
 
 ## CAKE — Knowledge Acquisition
 
