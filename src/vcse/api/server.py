@@ -10,6 +10,7 @@ from vcse.api.routes import router
 from vcse.api.routes_health import router as health_router
 from vcse.api.routes_pack import router as pack_router
 from vcse.api.routes_query import router as query_router
+from vcse.api.routes_reason import router as reason_router
 from vcse.api.routes_runtime import router as runtime_router
 from vcse.config import load_settings, Settings
 
@@ -23,6 +24,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(runtime_router)
     app.include_router(pack_router)
     app.include_router(query_router)
+    app.include_router(reason_router)
     install_error_handlers(
         app,
         max_request_bytes=runtime_settings.api_max_request_bytes,

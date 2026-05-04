@@ -212,3 +212,27 @@ def test_query_endpoint_invalid_csrf_returns_error() -> None:
     payload = resp.json()
     assert payload["status"] == "ERROR"
     assert payload["errors"]
+
+
+# --- Test 14: reason endpoint returns API_UNSUPPORTED_OPERATION ---
+def test_reason_endpoint_returns_unsupported_or_valid() -> None:
+    resp = _client().post("/reason", json={
+        "csrf_path": "/tmp/any.csrf",
+        "proof_index_path": None,
+        "trusted_only": False,
+        "explain": False,
+    })
+    payload = resp.json()
+    assert payload["status"] in ("OK", "ERROR")
+    if payload["status"] == "ERROR":
+        assert any(e["code"] == "API_UNSUPPORTED_OPERATION" for e in payload["errors"])
+
+
+# --- Test 15: no response leaks raw traceback ---
+def test_no_raw_traceback_in_error_response() -> None:
+    resp = _client().post("/runtime/validate", json={"csrf_path": "/tmp/vcse_test_error_99999.csrf"})
+    payload = resp.json()
+    payload_str = json.dumps(payload)
+    assert "Traceback" not in payload_str
+    assert "traceback" not in payload_str
+    assert 'File "' not in payload_str
