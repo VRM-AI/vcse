@@ -29,12 +29,6 @@ def _settings(request: Request):
     return getattr(request.app.state, "settings", None)
 
 
-@router.get("/health")
-def health(request: Request) -> dict[str, str]:
-    _settings(request)
-    return {"status": "ok", "version": API_VERSION}
-
-
 @router.get("/v1/models")
 def models() -> list[dict[str, str]]:
     return [{"id": MODEL_ID, "object": "model", "owned_by": MODEL_OWNER}]
