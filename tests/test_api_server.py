@@ -174,3 +174,41 @@ def test_bundle_verify_returns_structured_result() -> None:
         "BUNDLE_VALID", "BUNDLE_INVALID", "BUNDLE_UNSIGNED",
         "BUNDLE_TAMPERED", "BUNDLE_ERROR",
     )
+
+
+# --- Test 12: query endpoint preserves semantics on valid .csrf ---
+def test_query_endpoint_valid_csrf() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "runtime.csrf"
+        _write_valid_csrf(p)
+        resp = _client().post("/query", json={
+            "csrf_path": str(p),
+            "subject": "Paris",
+            "relation": None,
+            "object": None,
+            "trusted_only": False,
+            "explain": False,
+            "proof_index_path": None,
+        })
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "OK"
+    assert payload["data"]["result_count"] >= 1
+    assert payload["data"]["results"][0]["subject"] == "Paris"
+
+
+# --- Test 13: query endpoint rejects invalid .csrf path ---
+def test_query_endpoint_invalid_csrf_returns_error() -> None:
+    resp = _client().post("/query", json={
+        "csrf_path": "/tmp/vcse_test_nonexistent_query_99999.csrf",
+        "subject": "Paris",
+        "relation": None,
+        "object": None,
+        "trusted_only": False,
+        "explain": False,
+        "proof_index_path": None,
+    })
+    assert resp.status_code in (404, 422)
+    payload = resp.json()
+    assert payload["status"] == "ERROR"
+    assert payload["errors"]
