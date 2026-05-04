@@ -111,3 +111,14 @@ VCSE remains the verifier-centered execution core.
 - Bundle verification for manifest integrity + optional signature verification
 - Bundle inspection command surface for pre-ingest decisioning
 - Explicit separation: signature validity does not imply trust/certification
+
+## v6.9.0 — Runtime Hardening + Performance Benchmark Infrastructure
+
+- Runtime validation checks .csrf structural integrity (index ranges, casing, trust_tier, NaN/Inf)
+- Proof index validation checks consistency (path_length, support index, VERIFIED invariants)
+- Checked loaders (`load_csrf_checked`, `load_proof_index_checked`) raise structured errors on invalid artifacts
+- Atomic write helpers prevent partial artifacts on interrupted writes
+- Performance benchmark harness measures LOAD_CSRF, QUERY_SUBJECT/RELATION/OBJECT, PROOF_LOOKUP
+- Benchmark is measurement-only — no hard timing thresholds in v6.9
+- All validation failures are explicit and structured (UPPER_SNAKE_CASE codes)
+- No correctness shortcuts introduced; verifier/trust invariants unchanged

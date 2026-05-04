@@ -193,3 +193,31 @@ Design constraints:
 - Trust-tier comparisons appear in option rationale only as
   `recommended_by_trust`; nothing is selected automatically.
 - Existing `ConflictDetector` outputs and CMCF/.csrf data are never mutated.
+
+## Runtime Hardening and Performance Benchmarking (v6.9.0)
+
+### Runtime Validation (`vcse.runtime.validate`)
+
+`validate_csrf_index(index)` checks structural invariants of a compiled `.csrf` file:
+- Index positions in `by_subject/relation/object` are in-range and non-duplicate
+- Every record appears in all three indexes
+- `trust_tier >= 0`, `verification_status` is UPPER_SNAKE_CASE, no NaN/Inf values
+
+### Proof Index Validation (`vcse.proof.validate`)
+
+`validate_proof_index(index)` checks proof index consistency:
+- VERIFIED proofs must have `path_length >= 1` and at least one supporting claim
+- All index positions are in-range and non-duplicate
+- Required fields (`proof_id`, `result_claim_id`) are present
+
+### Atomic Writes (`vcse.runtime.atomic`)
+
+`atomic_write_text/bytes` writes via a temp sibling file + `os.replace`, preventing partial artifacts on interrupted writes.
+
+### Checked Loaders (`vcse.runtime.hardening`)
+
+`load_csrf_checked` and `load_proof_index_checked` load and validate artifacts, raising `RuntimeArtifactError` on structural failures. Do not silently repair invalid indexes.
+
+### Performance Benchmark (`vcse.perf.benchmark`)
+
+`run_runtime_benchmark(csrf_path, ...)` measures LOAD_CSRF, QUERY_SUBJECT/RELATION/OBJECT, PROOF_LOOKUP operations. Returns a `BenchmarkReport` with per-operation `elapsed_ms`. No hard timing thresholds — v6.9 establishes measurement infrastructure only.

@@ -661,3 +661,20 @@ vcse trust profile inspect examples/trust_profiles/default_candidate_profile.jso
 vcse trust profile apply examples/trust_profiles/historical_events_candidate_profile.json --cmcf events.cmcf.jsonl --json
 vcse trust profile diff old.json new.json --cmcf records.cmcf.jsonl --json
 ```
+
+## Runtime Hardening and Performance Benchmarking (v6.9.0)
+
+VCSE v6.9.0 adds operational hardening around compiled runtime artifacts:
+
+```sh
+# Validate a compiled runtime index
+vcse runtime validate path/to/runtime.csrf --json
+
+# Validate a proof index
+vcse proof validate path/to/proofs.proof.json --json
+
+# Measure runtime performance (no hard thresholds)
+vcse perf benchmark --csrf runtime.csrf --proof-index proofs.proof.json --iterations 3 --json
+```
+
+Validation catches: out-of-range indexes, duplicate positions, invalid trust tiers, lowercase status casing, and NaN/Inf values. Checked loaders raise `RuntimeArtifactError` on structural failures — no silent fallbacks.

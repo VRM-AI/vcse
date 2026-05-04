@@ -237,3 +237,28 @@ Behavior rules:
 - `SIGNATURE_VALID` never implies `VERIFIED`, trusted, or certified claims.
 - Unsigned bundles can be integrity-valid candidates.
 - Tampered bundles are detected via deterministic manifest hash checks.
+
+## Runtime Hardening and Performance Benchmarking (v6.9.0)
+
+### CLI Commands
+
+```sh
+vcse runtime validate <file.csrf> [--json]
+vcse proof validate <file.proof.json> [--json]
+vcse perf benchmark --csrf <file.csrf> [--proof-index <file.proof.json>] [--iterations N] [--json]
+```
+
+### Python API
+
+```python
+from vcse.runtime.validate import validate_csrf_index
+from vcse.proof.validate import validate_proof_index
+from vcse.runtime.hardening import load_csrf_checked, load_proof_index_checked
+from vcse.runtime.atomic import atomic_write_text, atomic_write_bytes
+from vcse.perf.benchmark import run_runtime_benchmark
+from vcse.perf.report import benchmark_report_to_json
+```
+
+Validation results use `status: RUNTIME_VALID | RUNTIME_INVALID | RUNTIME_ERROR`.
+Benchmark reports use `status: BENCHMARK_COMPLETE | BENCHMARK_FAILED`.
+All machine values are UPPER_SNAKE_CASE. No NaN/Inf in any serialized output.
