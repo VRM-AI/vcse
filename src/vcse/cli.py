@@ -4261,6 +4261,68 @@ def run_policy_apply(pack_path: Path, profile_file: Path, json_output: bool = Fa
     return "\n".join(lines)
 
 
+def run_runtime_validate(csrf_file: Path, json_output: bool = False) -> str:
+    from vcse.runtime.serialize import load_csrf
+    from vcse.runtime.validate import validate_csrf_index
+
+    index = load_csrf(Path(csrf_file))
+    result = validate_csrf_index(index)
+    payload = {
+        "status": result.status,
+        "issue_count": result.issue_count,
+        "issues": [
+            {"code": iss.code, "severity": iss.severity, "message": iss.message, "path": iss.path}
+            for iss in result.issues
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, indent=2, sort_keys=True)
+    lines = [f"status: {result.status}", f"issue_count: {result.issue_count}"]
+    for iss in result.issues:
+        lines.append(f"  [{iss.severity}] {iss.code}: {iss.message} (at {iss.path})")
+    return "\n".join(lines)
+
+
+def run_proof_validate(proof_index_file: Path, json_output: bool = False) -> str:
+    from vcse.proof.loader import load_proof_index
+    from vcse.proof.validate import validate_proof_index
+
+    index = load_proof_index(Path(proof_index_file))
+    result = validate_proof_index(index)
+    payload = {
+        "status": result.status,
+        "issue_count": result.issue_count,
+        "issues": [
+            {"code": iss.code, "severity": iss.severity, "message": iss.message, "path": iss.path}
+            for iss in result.issues
+        ],
+    }
+    if json_output:
+        return json.dumps(payload, indent=2, sort_keys=True)
+    lines = [f"status: {result.status}", f"issue_count: {result.issue_count}"]
+    for iss in result.issues:
+        lines.append(f"  [{iss.severity}] {iss.code}: {iss.message} (at {iss.path})")
+    return "\n".join(lines)
+
+
+def run_perf_benchmark(
+    csrf_file: Path,
+    proof_index_path: Path | None = None,
+    iterations: int = 3,
+    json_output: bool = False,
+) -> str:
+    from vcse.perf.benchmark import run_runtime_benchmark
+    from vcse.perf.report import benchmark_report_to_dict, benchmark_report_to_json
+
+    report = run_runtime_benchmark(Path(csrf_file), proof_index_path=proof_index_path, iterations=iterations)
+    if json_output:
+        return json.dumps(benchmark_report_to_dict(report), indent=2, sort_keys=True)
+    lines = [f"status: {report.status}", f"case_count: {report.case_count}"]
+    for r in report.results:
+        lines.append(f"  {r.operation}: {r.elapsed_ms:.3f}ms ({r.record_count} records)")
+    return "\n".join(lines)
+
+
 def _cmd_integrity(args: argparse.Namespace, subparsers: argparse.Action) -> str:
     from vcse.integrity.keys import generate_ed25519_keypair, load_private_key, load_public_key, key_id
     from vcse.integrity.signing import sign_data
@@ -4546,6 +4608,9 @@ def main(argv: list[str] | None = None) -> None:
     runtime_inspect_parser = runtime_subparsers.add_parser("inspect")
     runtime_inspect_parser.add_argument("csrf_file", type=Path)
     runtime_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+    runtime_validate_parser = runtime_subparsers.add_parser("validate")
+    runtime_validate_parser.add_argument("csrf_file", type=Path)
+    runtime_validate_parser.add_argument("--json", action="store_true", dest="json_output")
 
     proof_parser = subparsers.add_parser("proof")
     proof_subparsers = proof_parser.add_subparsers(dest="proof_command")
@@ -4564,6 +4629,17 @@ def main(argv: list[str] | None = None) -> None:
     proof_inspect_parser = proof_subparsers.add_parser("inspect")
     proof_inspect_parser.add_argument("proof_index_file", type=Path)
     proof_inspect_parser.add_argument("--json", action="store_true", dest="json_output")
+    proof_validate_parser = proof_subparsers.add_parser("validate")
+    proof_validate_parser.add_argument("proof_index_file", type=Path)
+    proof_validate_parser.add_argument("--json", action="store_true", dest="json_output")
+
+    perf_parser = subparsers.add_parser("perf")
+    perf_subparsers = perf_parser.add_subparsers(dest="perf_command")
+    perf_benchmark_parser = perf_subparsers.add_parser("benchmark")
+    perf_benchmark_parser.add_argument("--csrf", required=True, type=Path, dest="csrf_file")
+    perf_benchmark_parser.add_argument("--proof-index", type=Path, dest="proof_index_file")
+    perf_benchmark_parser.add_argument("--iterations", type=int, default=3)
+    perf_benchmark_parser.add_argument("--json", action="store_true", dest="json_output")
 
     compile_parser = subparsers.add_parser("compile")
     compile_subparsers = compile_parser.add_subparsers(dest="compile_command")
@@ -5158,6 +5234,9 @@ def main(argv: list[str] | None = None) -> None:
             if args.runtime_command == "inspect":
                 print(run_runtime_inspect(args.csrf_file, json_output=args.json_output))
                 return
+            if args.runtime_command == "validate":
+                print(run_runtime_validate(args.csrf_file, json_output=args.json_output))
+                return
         if args.command == "proof":
             if args.proof_command == "build":
                 print(run_proof_build(args.csrf_file, args.output_file, json_output=args.json_output))
@@ -5170,6 +5249,18 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if args.proof_command == "inspect":
                 print(run_proof_inspect(args.proof_index_file, json_output=args.json_output))
+                return
+            if args.proof_command == "validate":
+                print(run_proof_validate(args.proof_index_file, json_output=args.json_output))
+                return
+        if args.command == "perf":
+            if args.perf_command == "benchmark":
+                print(run_perf_benchmark(
+                    args.csrf_file,
+                    proof_index_path=getattr(args, "proof_index_file", None),
+                    iterations=args.iterations,
+                    json_output=args.json_output,
+                ))
                 return
         if args.command == "compiler":
             if args.compiler_command == "validate-mapping":
