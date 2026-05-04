@@ -85,3 +85,77 @@ def test_health_status_is_upper_snake_case() -> None:
 def test_default_host_is_loopback() -> None:
     from vcse.api.config import DEFAULT_HOST
     assert DEFAULT_HOST == "127.0.0.1"
+
+
+# --- Fixture helpers ---
+def _write_valid_csrf(path: Path) -> None:
+    from vcse.runtime.model import CSRFIndex, CSRFRecord
+    from vcse.runtime.serialize import save_csrf
+    rec = CSRFRecord(
+        claim_id="c1",
+        subject="Paris",
+        relation="capital_of",
+        object="France",
+        trust_tier=1,
+        lifecycle_status="active",
+        verification_status="VERIFIED",
+        provenance_id="prov:c1",
+    )
+    index = CSRFIndex(
+        records=(rec,),
+        by_subject={"Paris": (0,)},
+        by_relation={"capital_of": (0,)},
+        by_object={"France": (0,)},
+    )
+    save_csrf(index, path)
+
+
+# --- Test 7: missing runtime file returns structured API_NOT_FOUND ---
+def test_runtime_validate_missing_file_returns_not_found() -> None:
+    resp = _client().post("/runtime/validate", json={"csrf_path": "/tmp/nonexistent_vcse_test_12345.csrf"})
+    assert resp.status_code == 404
+    payload = resp.json()
+    assert payload["status"] == "ERROR"
+    assert any(e["code"] == "API_NOT_FOUND" for e in payload["errors"])
+
+
+# --- Test 8: invalid runtime file returns structured error ---
+def test_runtime_validate_invalid_file_returns_error() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".csrf", delete=False, mode="w") as f:
+        f.write('{"records": "not_a_list"}')
+        bad_path = f.name
+    try:
+        resp = _client().post("/runtime/validate", json={"csrf_path": bad_path})
+        assert resp.status_code in (400, 422)
+        payload = resp.json()
+        assert payload["status"] == "ERROR"
+        assert payload["errors"]
+    finally:
+        Path(bad_path).unlink(missing_ok=True)
+
+
+# --- Test 9: valid runtime validate returns RUNTIME_VALID ---
+def test_runtime_validate_valid_csrf_returns_runtime_valid() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "runtime.csrf"
+        _write_valid_csrf(p)
+        resp = _client().post("/runtime/validate", json={"csrf_path": str(p)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "OK"
+    assert payload["data"]["validation_status"] == "RUNTIME_VALID"
+
+
+# --- Test 10: invalid proof index returns structured error ---
+def test_proof_validate_invalid_returns_error() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".proof.json", delete=False, mode="w") as f:
+        f.write('{"proofs": "not_a_list"}')
+        bad_path = f.name
+    try:
+        resp = _client().post("/proof/validate", json={"proof_path": bad_path})
+        assert resp.status_code in (400, 422)
+        payload = resp.json()
+        assert payload["status"] == "ERROR"
+        assert payload["errors"]
+    finally:
+        Path(bad_path).unlink(missing_ok=True)
