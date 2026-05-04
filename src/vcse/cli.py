@@ -110,6 +110,7 @@ from vcse.compression import (
     format_metrics,
     CompressionError,
 )
+from vcse.distribution import create_pack_bundle, inspect_pack_bundle, verify_pack_bundle
 from vcse.agent import (
     AgentError,
     ExecutionError,
@@ -2061,6 +2062,56 @@ def run_pack_verify_signature(pack_spec: str, json_output: bool = False) -> str:
         lines.append(f"reason: {result['reason']}")
     if result.get("algorithm"):
         lines.append(f"algorithm: {result['algorithm']}")
+    return "\n".join(lines)
+
+
+def run_pack_bundle(pack_path: Path, output_dir: Path, private_key: Path | None = None, json_output: bool = False) -> str:
+    bundle_path = create_pack_bundle(pack_path=pack_path, output_dir=output_dir, private_key_path=private_key)
+    payload = {"status": "BUNDLE_CREATED", "bundle_path": str(bundle_path)}
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    return "\n".join(["status: BUNDLE_CREATED", f"bundle_path: {bundle_path}"])
+
+
+def run_pack_verify_bundle(bundle_path: Path, public_key: Path | None = None, json_output: bool = False) -> str:
+    result = verify_pack_bundle(bundle_path=bundle_path, public_key_path=public_key)
+    payload = {
+        "status": result.status,
+        "bundle_id": result.bundle_id,
+        "pack_id": result.pack_id,
+        "file_count": result.file_count,
+        "signature_status": result.signature_status,
+        "integrity_status": result.integrity_status,
+        "issues": list(result.issues),
+    }
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        f"status: {result.status}",
+        f"bundle_id: {result.bundle_id or ''}",
+        f"pack_id: {result.pack_id or ''}",
+        f"file_count: {result.file_count}",
+        f"signature_status: {result.signature_status}",
+        f"integrity_status: {result.integrity_status}",
+    ]
+    if result.issues:
+        lines.append(f"issues: {','.join(result.issues)}")
+    return "\n".join(lines)
+
+
+def run_pack_inspect_bundle(bundle_path: Path, json_output: bool = False) -> str:
+    payload = inspect_pack_bundle(bundle_path)
+    if json_output:
+        return json.dumps(payload, sort_keys=True)
+    lines = [
+        "status: BUNDLE_INSPECTED",
+        f"bundle_id: {payload.get('bundle_id', '')}",
+        f"pack_id: {payload.get('pack_id', '')}",
+        f"file_count: {payload.get('file_count', 0)}",
+        f"signature_status: {payload.get('signature_status', '')}",
+        f"integrity_status: {payload.get('integrity_status', '')}",
+        f"content_hash: {payload.get('content_hash', '')}",
+    ]
     return "\n".join(lines)
 
 
@@ -4643,6 +4694,18 @@ def main(argv: list[str] | None = None) -> None:
     pack_verify_sig_parser.add_argument("pack")
     pack_verify_sig_parser.add_argument("--json", action="store_true", dest="json_output")
     pack_verify_sig_parser.add_argument("--strict", action="store_true")
+    pack_bundle_parser = pack_subparsers.add_parser("bundle")
+    pack_bundle_parser.add_argument("pack_path", type=Path)
+    pack_bundle_parser.add_argument("--output", required=True, type=Path, dest="output_dir")
+    pack_bundle_parser.add_argument("--key", type=Path, dest="private_key")
+    pack_bundle_parser.add_argument("--json", action="store_true", dest="json_output")
+    pack_verify_bundle_parser = pack_subparsers.add_parser("verify-bundle")
+    pack_verify_bundle_parser.add_argument("bundle_path", type=Path)
+    pack_verify_bundle_parser.add_argument("--key", type=Path, dest="public_key")
+    pack_verify_bundle_parser.add_argument("--json", action="store_true", dest="json_output")
+    pack_inspect_bundle_parser = pack_subparsers.add_parser("inspect-bundle")
+    pack_inspect_bundle_parser.add_argument("bundle_path", type=Path)
+    pack_inspect_bundle_parser.add_argument("--json", action="store_true", dest="json_output")
 
     region_parser = subparsers.add_parser("region")
     region_subparsers = region_parser.add_subparsers(dest="region_command")
@@ -5299,6 +5362,28 @@ def main(argv: list[str] | None = None) -> None:
                             raise SystemExit(2)
                     elif "status: VALID" not in text:
                         raise SystemExit(2)
+                return
+            if args.pack_command == "bundle":
+                print(
+                    run_pack_bundle(
+                        args.pack_path,
+                        output_dir=args.output_dir,
+                        private_key=args.private_key,
+                        json_output=args.json_output,
+                    )
+                )
+                return
+            if args.pack_command == "verify-bundle":
+                print(
+                    run_pack_verify_bundle(
+                        args.bundle_path,
+                        public_key=args.public_key,
+                        json_output=args.json_output,
+                    )
+                )
+                return
+            if args.pack_command == "inspect-bundle":
+                print(run_pack_inspect_bundle(args.bundle_path, json_output=args.json_output))
                 return
         if args.command == "region":
             if args.region_command == "list":
