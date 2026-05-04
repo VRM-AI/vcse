@@ -222,3 +222,18 @@ Resolution options always include `keep_a`, `keep_b`, `mark_disputed`, and
 `require_review`; trust-tier comparisons appear as `recommended_by_trust`
 annotations only. No option is ever auto-applied; `ConflictDetector` and CMCF/.csrf
 data remain unchanged.
+
+## Signed Pack Distribution (v6.8.0)
+
+CLI:
+
+- `vcse pack bundle <pack_path> --output <dir> [--key <private_key>] [--json]`
+- `vcse pack verify-bundle <bundle_path> [--key <public_key>] [--json]`
+- `vcse pack inspect-bundle <bundle_path> [--json]`
+
+Behavior rules:
+
+- Signing proves bundle authenticity/integrity only.
+- `SIGNATURE_VALID` never implies `VERIFIED`, trusted, or certified claims.
+- Unsigned bundles can be integrity-valid candidates.
+- Tampered bundles are detected via deterministic manifest hash checks.

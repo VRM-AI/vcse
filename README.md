@@ -96,6 +96,9 @@ vcse gauntlet benchmarks/gauntlet/
 vcse serve
 vcse pack validate examples/packs/logic_basic
 vcse pack install examples/packs/logic_basic
+vcse pack bundle examples/packs/logic_basic --output /tmp/bundles
+vcse pack verify-bundle /tmp/bundles/vrm.logic.basic.vcsepack --json
+vcse pack inspect-bundle /tmp/bundles/vrm.logic.basic.vcsepack --json
 vcse ask "Can Socrates die?" --pack vrm.logic.basic
 vcse trust evaluate examples/trust/cross_supported_claims.jsonl
 vcse trust promote examples/packs/trusted_basic
@@ -218,6 +221,21 @@ vcse runtime inspect runtime.csrf --json
 ```
 
 ## Proof Indexing (v6.4.0)
+
+## Signed Pack Distribution (v6.8.0)
+
+- Signing proves authenticity and integrity, not correctness.
+- `SIGNATURE_VALID` does not imply trusted or certified claims.
+- Bundle verification is a pre-ingest/pre-use safety check.
+- Manifest integrity detects tampering before import/use.
+
+Commands:
+
+```bash
+vcse pack bundle <pack_path> --output <dir> [--key <private_key>] [--json]
+vcse pack verify-bundle <bundle_path> [--key <public_key>] [--json]
+vcse pack inspect-bundle <bundle_path> [--json]
+```
 
 `.proof.json` is a deterministic compiled proof index over CMCF/.csrf data:
 

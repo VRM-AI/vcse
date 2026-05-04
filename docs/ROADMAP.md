@@ -35,7 +35,7 @@ Rules:
 - v6.5 — conflict resolution workflows
 - v6.6 — advanced policy execution engine
 - v6.7 — pack signing + manifest integrity
-- v6.8 — encrypted/private pack support
+- v6.8 — signed pack distribution lifecycle
 - v6.9 — runtime performance hardening
 - v6.10 — production API/server hardening
 
@@ -103,3 +103,11 @@ VCSE remains the verifier-centered execution core.
   - `vcse conflict impact <id> --report`
   - `vcse conflict export-report`
 - No automatic conflict resolution; maintainer-controlled review
+
+## v6.8 Delivered
+
+- Signed pack bundle lifecycle (`.vcsepack`) with deterministic manifests
+- Bundle signing with Ed25519 using existing integrity primitives
+- Bundle verification for manifest integrity + optional signature verification
+- Bundle inspection command surface for pre-ingest decisioning
+- Explicit separation: signature validity does not imply trust/certification

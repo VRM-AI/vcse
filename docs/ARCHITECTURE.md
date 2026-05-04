@@ -61,6 +61,8 @@ Input JSON / CLI demo
   and staleness analysis for claim lifecycle management.
 - Ledger: append-only hash-chain event history plus Merkle integrity snapshots
   for tamper-evident auditing.
+- Distribution: deterministic pack bundle manifest/sign/verify/inspect lifecycle
+  for pre-ingest authenticity and tamper detection.
 - Verifiers: judge claims, constraints, contradictions, and goal satisfaction.
 - Renderer: prints evaluated state with no inference or decision logic.
 - Explanation layer: deterministic node/trace models and renderers for
@@ -159,6 +161,19 @@ Design constraints:
 - Proof ordering is deterministic: verification status, path length, trust tier,
   lexicographic `proof_id`.
 - `.proof.json` is disposable and rebuildable from CMCF/.csrf.
+
+## Signed Pack Distribution (v6.8)
+
+- `distribution.bundle`: deterministic `<pack_id>.vcsepack` creation.
+- `distribution.manifest`: canonical bundle manifest and content hashing.
+- `distribution.verify`: manifest hash validation + optional Ed25519 signature verification.
+- `distribution.inspect`: non-mutating bundle status inspection.
+
+Design constraints:
+
+- Signing/authenticity is separate from claim correctness and trust promotion.
+- Signature validity does not bypass trust profiles or policy execution.
+- No network key lookup and no private key storage in repository.
 
 ## Conflict Resolution Workflows (v6.5)
 
