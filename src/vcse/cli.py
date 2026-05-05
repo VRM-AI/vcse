@@ -127,6 +127,7 @@ from vcse.pipeline import PackPipelineRunner
 from vcse.pipeline.runner import PipelineError
 from vcse.pipeline.runner import cross_pack_reason
 from vcse.reasoning.global_graph import build_global_claim_graph
+from vcse.reasoning.service import ReasonServiceRequest, run_reason_service
 from vcse.identity.normalizer import normalize_entity
 from vcse.query import StructuredQuery, StructuredQueryEngine
 from vcse.explain import ExplanationBuilder, ExplanationRenderer as ProofExplanationRenderer
@@ -3619,7 +3620,16 @@ def run_reason(
     skipped: list[dict[str, str]] = []
     runtime_claims_source: list[dict] = []
     pack_ref = ""
+    service_result = None
     if csrf_file is not None:
+        service_result = run_reason_service(
+            ReasonServiceRequest(
+                csrf_path=csrf_file,
+                proof_index_path=proof_index_file,
+                trusted_only=trusted_only,
+                explain=explain,
+            )
+        )
         runtime = load_csrf(csrf_file)
         pack_ref = str(csrf_file)
         for item in runtime.records:
@@ -3691,7 +3701,11 @@ def run_reason(
             blocked_claim_count += 1
             continue
         runtime_claims.append(claim)
-    inferred_claims = cross_pack_reason(runtime_claims, rules=None)
+    inferred_claims = (
+        list(service_result.inferred_claims)
+        if service_result is not None
+        else cross_pack_reason(runtime_claims, rules=None)
+    )
     conflicts = ConflictDetector().detect_global_conflicts(runtime_claims + inferred_claims)
     payload = {
         "status": "GLOBAL_REASONING_COMPLETE",
@@ -3728,8 +3742,11 @@ def run_reason(
         ],
     }
     if explain:
-        explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
-        payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
+        if service_result is not None and service_result.explanations is not None:
+            payload["explanations"] = service_result.explanations
+        else:
+            explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
+            payload["explanations"] = ProofExplanationRenderer().render_result_json(explanation_result)
     if json_output:
         return json.dumps(payload, sort_keys=True)
     lines = [
@@ -3761,12 +3778,16 @@ def run_reason(
                 f"  - {item['pack_id']} ({item['lifecycle_status']}): {item['reason']}"
             )
     if explain:
-        explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
+        if service_result is not None and service_result.explanations is not None:
+            explanation_payload = service_result.explanations
+        else:
+            explanation_result = ExplanationBuilder().explain_reasoning_results(inferred_claims)
+            explanation_payload = ProofExplanationRenderer().render_result_json(explanation_result)
         renderer = ProofExplanationRenderer()
         lines.append("explanations:")
-        lines.append(f"  status: {explanation_result.status}")
-        lines.append(f"  trace_count: {explanation_result.trace_count}")
-        for trace in explanation_result.traces:
+        lines.append(f"  status: {explanation_payload.get('status', 'EXPLANATION_COMPLETE')}")
+        lines.append(f"  trace_count: {explanation_payload.get('trace_count', 0)}")
+        for trace in explanation_payload.get("traces", []):
             lines.append("  trace:")
             for row in renderer.render_text(trace).splitlines():
                 lines.append(f"    {row}")
