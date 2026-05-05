@@ -113,11 +113,11 @@ vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
 ```
 
-## Operational API Server (v6.10.0)
+## Operational API Server (v6.11.0)
 
 `vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
 
-Operational endpoints for health, readiness, runtime/proof/bundle validation, and structured queries:
+Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, and reasoning:
 - `/health` — service health status
 - `/version` — VCSE and Python versions
 - `/ready` — readiness probe
@@ -126,6 +126,7 @@ Operational endpoints for health, readiness, runtime/proof/bundle validation, an
 - `/proof/validate` — validate `.proof.json` index
 - `/pack/verify-bundle` — verify `.vcsepack` bundle integrity
 - `/query` — structured deterministic query over `.csrf` runtime
+- `/reason` — reason over `.csrf` runtime (functional in v6.11.0)
 
 See [docs/API.md](docs/API.md) for response contract and examples.
 

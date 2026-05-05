@@ -222,13 +222,24 @@ Design constraints:
 
 `run_runtime_benchmark(csrf_path, ...)` measures LOAD_CSRF, QUERY_SUBJECT/RELATION/OBJECT, PROOF_LOOKUP operations. Returns a `BenchmarkReport` with per-operation `elapsed_ms`. No hard timing thresholds — v6.9 establishes measurement infrastructure only.
 
-## Operational API Layer (v6.10.0)
+## Operational API Layer (v6.11.0)
 
 - `api.server`: HTTP server binds to `127.0.0.1:8000` by default.
-- `api.endpoints`: health, version, readiness, liveness, runtime/proof/bundle validation, structured query.
+- `api.endpoints`: health, version, readiness, liveness, runtime/proof/bundle validation, structured query, reason.
 - `api.response`: unified `VcseResponse` contract with `status`, `version`, `request_id`, `data`, `errors`.
 - `api.errors`: machine-readable UPPER_SNAKE_CASE error codes, no raw tracebacks.
 - `api.xheader`: `X-Request-ID` echo support for request tracing.
+
+### Reason Service (`vcse.reasoning.service`)
+
+Introduced in v6.11.0. Extracted from `cli.run_reason` to provide a reusable, testable service layer.
+
+- `ReasonServiceRequest`: frozen dataclass — `csrf_path`, `proof_index_path`, `trusted_only`, `explain`, `max_results`.
+- `ReasonServiceResult`: frozen dataclass — `status`, `inferred_count`, `inferred_claims`, `explanations`, `issues`.
+- `run_reason_service()`: loads and validates `.csrf` via `load_csrf_checked`, optionally validates proof index,
+  applies policy, invokes `cross_pack_reason`, returns structured result.
+- Statuses: `REASON_COMPLETE`, `REASON_FAILED`, `REASON_RUNTIME_INVALID`, `REASON_PROOF_INVALID`.
+- Does not mutate artifacts, does not write files, does not alter verifier or trust semantics.
 
 Design constraints:
 

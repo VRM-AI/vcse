@@ -263,7 +263,7 @@ Validation results use `status: RUNTIME_VALID | RUNTIME_INVALID | RUNTIME_ERROR`
 Benchmark reports use `status: BENCHMARK_COMPLETE | BENCHMARK_FAILED`.
 All machine values are UPPER_SNAKE_CASE. No NaN/Inf in any serialized output.
 
-## Operational API Interface (v6.10.0)
+## Operational API Interface (v6.11.0)
 
 VCSE exposes a local-first operational HTTP interface alongside the OpenAI-compat `/v1/*` adapter.
 
@@ -277,7 +277,7 @@ All operational endpoints return:
 ```json
 {
   "status": "OK",
-  "version": "6.10.0",
+  "version": "6.11.0",
   "request_id": "...",
   "data": {},
   "errors": []
@@ -300,7 +300,52 @@ All operational endpoints return:
 | POST | `/proof/validate` | Validate `.proof.json` index by path |
 | POST | `/pack/verify-bundle` | Verify `.vcsepack` bundle integrity |
 | POST | `/query` | Structured query over `.csrf` runtime |
-| POST | `/reason` | Not yet available (v6.11) |
+| POST | `/reason` | Reason over `.csrf` runtime (functional in v6.11.0) |
+
+### POST /reason
+
+Runs the reason service over a validated `.csrf` runtime artifact.
+
+Request:
+```json
+{
+  "csrf_path": "/path/to/runtime.csrf",
+  "proof_index_path": null,
+  "trusted_only": false,
+  "explain": false,
+  "max_results": null
+}
+```
+
+Success response:
+```json
+{
+  "status": "OK",
+  "version": "6.11.0",
+  "request_id": "...",
+  "data": {
+    "reason_status": "REASON_COMPLETE",
+    "inferred_count": 0,
+    "inferred_claims": [],
+    "explanations": null
+  },
+  "errors": []
+}
+```
+
+Error codes:
+- `API_NOT_FOUND` — missing `csrf_path` or `proof_index_path` file
+- `API_RUNTIME_INVALID` — `.csrf` artifact fails structural validation
+- `API_PROOF_INVALID` — `.proof.json` index fails structural validation
+- `API_INTERNAL_ERROR` — unexpected service failure
+
+The `/reason` endpoint:
+- uses validated `.csrf` runtime artifacts (via `load_csrf_checked`)
+- validates proof index when `proof_index_path` is supplied
+- does not alter verifier, trust, or signature semantics
+- does not certify claims or auto-trust signatures
+- does not infer beyond existing CLI reason behavior
+- no longer returns `API_UNSUPPORTED_OPERATION` for valid requests
 
 ### Invariants
 

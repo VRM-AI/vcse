@@ -134,3 +134,16 @@ VCSE remains the verifier-centered execution core.
 - X-Request-ID header echo support for request tracing
 - /reason endpoint deferred to v6.11
 - All endpoints deterministic, non-mutating, never auto-certifying
+
+## v6.11.0 — Reason Service Extraction + API /reason Enablement
+
+- Extracted reusable reason service (`vcse.reasoning.service`) from CLI `run_reason`
+- Service accepts `ReasonServiceRequest`, returns `ReasonServiceResult` (frozen dataclasses)
+- Service validates `.csrf` via `load_csrf_checked` before reasoning
+- Service validates proof index via `load_proof_index_checked` when `proof_index_path` supplied
+- API `/reason` endpoint functional; uses validated `.csrf` runtime artifacts
+- API `/reason` no longer returns `API_UNSUPPORTED_OPERATION` for valid requests
+- Reason service statuses: `REASON_COMPLETE`, `REASON_FAILED`, `REASON_RUNTIME_INVALID`, `REASON_PROOF_INVALID`
+- CLI reason behavior preserved unchanged; parity verified
+- No changes to verifier, trust, signature, proof index, or CMCF semantics
+- false_verified_count remains 0
