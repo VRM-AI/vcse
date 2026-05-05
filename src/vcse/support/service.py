@@ -35,7 +35,7 @@ def evaluate_source_support(
     - Never modifies inputs.
     - GROUNDED does not imply SOURCE_SUPPORTED.
     - SOURCE_SUPPORTED requires an active relation with a valid support profile.
-    - Proposal-Agent / LLM / embedding similarity cannot assign SOURCE_SUPPORTED.
+    - Proposal-Agent / generative-model judgment cannot assign SOURCE_SUPPORTED.
     """
     # Step 1: missing source span ids
     if not claim.source_span_ids:
