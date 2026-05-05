@@ -848,6 +848,94 @@ def run_support_evaluate(
     return "\n".join(lines)
 
 
+def _load_ontology_registry(registry_file: Path):  # type: ignore[return]
+    from vcse.ontology.model import (
+        OntologyClaimType, OntologyEntityType, OntologyRegistry, OntologyRelation,
+    )
+    data = json.loads(registry_file.read_text(encoding="utf-8"))
+    relations = tuple(
+        OntologyRelation(
+            relation_id=str(r.get("relation_id", "")),
+            label=str(r.get("label", "")),
+            support_profile_id=r.get("support_profile_id"),
+            activation_status=str(r.get("activation_status", "")),
+            ontology_version=str(r.get("ontology_version", "")),
+            subject_types=tuple(r.get("subject_types", [])),
+            object_types=tuple(r.get("object_types", [])),
+            functional=bool(r.get("functional", False)),
+            allowed_support_profiles=tuple(r.get("allowed_support_profiles", [])),
+            inverse_relation_id=r.get("inverse_relation_id"),
+            metadata=r.get("metadata", {}),
+        )
+        for r in data.get("relations", [])
+    )
+    entity_types = tuple(
+        OntologyEntityType(
+            entity_type_id=str(e.get("entity_type_id", "")),
+            label=str(e.get("label", "")),
+            activation_status=str(e.get("activation_status", "")),
+            ontology_version=str(e.get("ontology_version", "")),
+            metadata=e.get("metadata", {}),
+        )
+        for e in data.get("entity_types", [])
+    )
+    claim_types = tuple(
+        OntologyClaimType(
+            claim_type_id=str(c.get("claim_type_id", "")),
+            label=str(c.get("label", "")),
+            activation_status=str(c.get("activation_status", "")),
+            ontology_version=str(c.get("ontology_version", "")),
+            metadata=c.get("metadata", {}),
+        )
+        for c in data.get("claim_types", [])
+    )
+    return OntologyRegistry(
+        ontology_version=str(data.get("ontology_version", "")),
+        relations=relations,
+        entity_types=entity_types,
+        claim_types=claim_types,
+    )
+
+
+def run_ontology_validate(registry_file: Path, json_output: bool = False) -> str:
+    from vcse.ontology.validate import validate_ontology_registry
+    registry = _load_ontology_registry(registry_file)
+    result = validate_ontology_registry(registry)
+    if json_output:
+        return json.dumps({
+            "ontology_status": result.status,
+            "issue_count": result.issue_count,
+            "issues": [{"code": i.code, "message": i.message, "path": i.path} for i in result.issues],
+        }, sort_keys=True, indent=2)
+    lines = [
+        f"ontology_status: {result.status}",
+        f"issue_count: {result.issue_count}",
+    ]
+    if result.issues:
+        lines.append("issues:")
+        for iss in result.issues:
+            lines.append(f"  - [{iss.code}] {iss.message} (path: {iss.path})")
+    return "\n".join(lines)
+
+
+def run_ontology_relations(registry_file: Path, active_only: bool = False, json_output: bool = False) -> str:
+    from vcse.ontology.serialize import ontology_relation_to_dict
+    from vcse.ontology.model import ACTIVE
+    registry = _load_ontology_registry(registry_file)
+    relations = registry.relations
+    if active_only:
+        relations = tuple(r for r in relations if r.activation_status == ACTIVE)
+    if json_output:
+        return json.dumps(
+            {"relations": [ontology_relation_to_dict(r) for r in relations]},
+            sort_keys=True, indent=2,
+        )
+    lines = [f"relation_count: {len(relations)}"]
+    for r in relations:
+        lines.append(f"  - {r.relation_id} [{r.activation_status}] profile={r.support_profile_id}")
+    return "\n".join(lines)
+
+
 def run_ingest(
     source: str,
     json_output: bool = False,
@@ -4703,6 +4791,16 @@ def main(argv: list[str] | None = None) -> None:
     support_evaluate_parser.add_argument("--relations", required=True, type=Path, dest="relations_file")
     support_evaluate_parser.add_argument("--json", action="store_true", dest="json_output")
 
+    ontology_parser = subparsers.add_parser("ontology")
+    ontology_subparsers = ontology_parser.add_subparsers(dest="ontology_command")
+    ontology_validate_parser = ontology_subparsers.add_parser("validate")
+    ontology_validate_parser.add_argument("--registry", required=True, type=Path, dest="registry_file")
+    ontology_validate_parser.add_argument("--json", action="store_true", dest="json_output")
+    ontology_relations_parser = ontology_subparsers.add_parser("relations")
+    ontology_relations_parser.add_argument("--registry", required=True, type=Path, dest="registry_file")
+    ontology_relations_parser.add_argument("--active-only", action="store_true", dest="active_only")
+    ontology_relations_parser.add_argument("--json", action="store_true", dest="json_output")
+
     dsl_parser = subparsers.add_parser("dsl")
     dsl_subparsers = dsl_parser.add_subparsers(dest="dsl_command")
     dsl_validate_parser = dsl_subparsers.add_parser("validate")
@@ -6201,6 +6299,19 @@ def main(argv: list[str] | None = None) -> None:
                 ))
             else:
                 support_subparsers.print_help()
+            return
+
+        if args.command == "ontology":
+            if args.ontology_command == "validate":
+                print(run_ontology_validate(args.registry_file, json_output=args.json_output))
+            elif args.ontology_command == "relations":
+                print(run_ontology_relations(
+                    args.registry_file,
+                    active_only=args.active_only,
+                    json_output=args.json_output,
+                ))
+            else:
+                ontology_subparsers.print_help()
             return
 
         if args.command == "integrity":

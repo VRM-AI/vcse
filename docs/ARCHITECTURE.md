@@ -264,3 +264,22 @@ Doctrine:
 - SOURCE_SUPPORTED requires active relation + valid profile + deterministic check passing.
 - Proposal-Agent / LLM / embedding similarity cannot assign SOURCE_SUPPORTED.
 - Unknown relations → NEEDS_ONTOLOGY. Missing profile → INVALID_ONTOLOGY_RELATION.
+
+### Ontology Package (`vcse.ontology`) — v6.13.0
+
+Deterministic ontology governance layer. Separates lifecycle management from source-support evaluation.
+
+- `model`: `OntologyRelation`, `OntologyEntityType`, `OntologyClaimType`, `OntologyRegistry`, lifecycle state constants (PROPOSED, STRUCTURALLY_VALID, IMPACT_ANALYZED, CONFLICT_CHECKED, REGRESSION_TESTED, APPROVED, STAGED, ACTIVE, and side states).
+- `lifecycle`: transition validation, `is_active()`, `is_authoritative_for_source_support()`.
+- `registry`: `active_relation_view_from_ontology_relation()`, `relation_map_for_source_support()` — builds source-support map from ACTIVE relations only.
+- `validate`: `validate_ontology_registry()`, `validate_ontology_relation()`, `validate_active_relation_requirements()` — UPPER_SNAKE_CASE issue codes.
+- `serialize`: deterministic JSON serialization of ontology registries.
+
+Design constraints:
+
+- Only ACTIVE relations are authoritative for source-support evaluation.
+- PROPOSED, APPROVED, STAGED are not ACTIVE — excluded from source-support map.
+- ACTIVE relations require a valid `support_profile_id`.
+- Ontology versions are immutable once ACTIVE.
+- API `/ontology/validate` endpoint uses unified response contract.
+- CLI `vcse ontology validate` and `vcse ontology relations` commands are command-native JSON (not API-wrapped).

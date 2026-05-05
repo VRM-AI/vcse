@@ -12,6 +12,7 @@ from vcse.api.routes_pack import router as pack_router
 from vcse.api.routes_query import router as query_router
 from vcse.api.routes_reason import router as reason_router
 from vcse.api.routes_runtime import router as runtime_router
+from vcse.api.routes_ontology import router as ontology_router
 from vcse.api.routes_support import router as support_router
 from vcse.config import load_settings, Settings
 
@@ -27,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(query_router)
     app.include_router(reason_router)
     app.include_router(support_router)
+    app.include_router(ontology_router)
     install_error_handlers(
         app,
         max_request_bytes=runtime_settings.api_max_request_bytes,

@@ -25,28 +25,6 @@ Rules:
 - v5.8.x — edge-case hardening
 - v5.9 — explanation + proof rendering
 
-## Next
-
-- v6.0 — CMCF schema/model/validation foundation
-- v6.1 — universal source adapters to CMCF
-- v6.2 — source trust profiles + policy-gated intake
-- v6.3 — `.csrf` compiled runtime format
-- v6.4 — proof indexing + trace engine
-- v6.5 — conflict resolution workflows
-- v6.6 — advanced policy execution engine
-- v6.7 — pack signing + manifest integrity
-- v6.8 — signed pack distribution lifecycle
-- v6.9 — runtime performance hardening
-- v6.10 — production API/server hardening
-
-## v7.0 Interface Layer
-
-v7.0 introduces an interface layer with optional LLM integration:
-
-`optional LLM interface -> structured query/intent -> VCSE execution -> verified/explained output`
-
-VCSE remains the verifier-centered execution core.
-
 ## v6.1 Delivered
 
 - Universal source intake with deterministic adapters (JSON/JSONL/CSV/HTML table)
@@ -161,3 +139,53 @@ VCSE remains the verifier-centered execution core.
 - No changes to verifier, trust, proof, runtime, signing, or CMCF semantics
 - false_verified_count remains 0
 - v6.12 is the VCSE-side GSR-readiness contract; GSR project files not included
+
+## v6.13.0 — Ontology Governance Foundation
+
+- New package `vcse.ontology` implementing deterministic ontology governance
+- Lifecycle states: PROPOSED → STRUCTURALLY_VALID → IMPACT_ANALYZED → CONFLICT_CHECKED → REGRESSION_TESTED → APPROVED → STAGED → ACTIVE
+- Only ACTIVE relations are authoritative for source-support evaluation
+- ACTIVE relations require support_profile_id checked against supported profile registry
+- PROPOSED/APPROVED/STAGED relations excluded from source-support active map
+- API `POST /ontology/validate` endpoint using unified response contract
+- CLI `vcse ontology validate --registry <ontology.json> [--json]`
+- CLI `vcse ontology relations --registry <ontology.json> --active-only [--json]`
+- Ontology statuses/reason codes are UPPER_SNAKE_CASE
+- ACTIVE ontology versions are immutable
+- No changes to verifier, trust, proof, runtime, signing, or CMCF semantics
+- false_verified_count remains 0
+
+## Roadmap
+
+VCSE remains deterministic correctness infrastructure. External runtime / agent / prompt work belongs outside VCSE.
+
+### Completed
+
+- v6.0.0    CMCF canonical foundation
+- v6.1.0    universal source intake
+- v6.2.0    configurable trust profiles + retroactive trust evaluation
+- v6.3.0    .csrf compiled runtime layer
+- v6.4.0    proof index
+- v6.5.0    conflict workflows
+- v6.5.1    verifier NO_PROOF enforcement
+- v6.5.2    unconditional T4/T5 proof gate
+- v6.6.0    policy execution layer
+- v6.7.0    signing + authenticity
+- v6.8.0    signed pack distribution lifecycle
+- v6.9.0    runtime hardening + performance infrastructure
+- v6.10.1   API/server hardening + unified error contract
+- v6.11.0   reason service + functional API /reason
+- v6.12.0   deterministic source-support contracts
+- v6.13.0   ontology governance foundation
+
+### Next
+
+- v6.14.0   Candidate Proposal Contract
+- v6.15.0   Ledger Event Taxonomy
+- v6.16.0   Renderer Guard + Answer Verification
+- v6.17.0   Repair Contract Foundation
+- v6.18.0   Integration Adapter Contracts
+- v6.19.0   CLI De-Monolith
+- v6.20.0   Property-Based Testing
+- v6.21.0   Mutation Testing Baseline
+- v6.22.0   Formal Spec Skeleton

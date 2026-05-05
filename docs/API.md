@@ -277,7 +277,7 @@ All operational endpoints return:
 ```json
 {
   "status": "OK",
-  "version": "6.11.0",
+  "version": "6.13.0",
   "request_id": "...",
   "data": {},
   "errors": []
@@ -302,6 +302,7 @@ All operational endpoints return:
 | POST | `/query` | Structured query over `.csrf` runtime |
 | POST | `/reason` | Reason over `.csrf` runtime (functional in v6.11.0) |
 | POST | `/support/evaluate` | Deterministic source support evaluation (v6.12.0) |
+| POST | `/ontology/validate` | Validate ontology registry (v6.13.0) |
 
 ### POST /reason
 
@@ -322,7 +323,7 @@ Success response:
 ```json
 {
   "status": "OK",
-  "version": "6.11.0",
+  "version": "6.13.0",
   "request_id": "...",
   "data": {
     "reason_status": "REASON_COMPLETE",
@@ -390,6 +391,82 @@ The `/support/evaluate` endpoint:
 - embedding similarity cannot assign `SOURCE_SUPPORTED`
 - unknown relations return `NEEDS_ONTOLOGY`
 - missing `support_profile_id` returns `INVALID_ONTOLOGY_RELATION`
+
+### POST /ontology/validate
+
+Validates an ontology registry for structural correctness and lifecycle consistency.
+
+Request:
+```json
+{
+  "ontology_version": "2024-06-01",
+  "relations": [
+    {
+      "relation_id": "requires_timeout",
+      "label": "requires timeout",
+      "support_profile_id": "SUPPORT_NORMALIZED",
+      "activation_status": "ACTIVE",
+      "ontology_version": "2024-06-01",
+      "subject_types": ["Deployment"],
+      "object_types": ["Timeout"],
+      "functional": true,
+      "allowed_support_profiles": ["SUPPORT_NORMALIZED", "SUPPORT_EXACT"]
+    }
+  ],
+  "entity_types": [],
+  "claim_types": []
+}
+```
+
+Success response:
+```json
+{
+  "status": "OK",
+  "version": "6.13.0",
+  "request_id": "...",
+  "data": {
+    "ontology_status": "ONTOLOGY_VALID",
+    "issue_count": 0,
+    "issues": []
+  },
+  "errors": []
+}
+```
+
+Error response (invalid ontology):
+```json
+{
+  "status": "OK",
+  "version": "6.13.0",
+  "request_id": "...",
+  "data": {
+    "ontology_status": "ONTOLOGY_INVALID",
+    "issue_count": 2,
+    "issues": [
+      {"code": "ACTIVE_RELATION_MISSING_SUPPORT_PROFILE", "message": "ACTIVE relation requires support_profile_id", "path": "relation['requires_timeout'].support_profile_id"},
+      {"code": "MISSING_ONTOLOGY_VERSION", "message": "ontology_version is required", "path": "ontology_version"}
+    ]
+  },
+  "errors": []
+}
+```
+
+Validation rules:
+- `relation_id` is required for each relation
+- `ontology_version` is required at root and per-relation
+- `activation_status` must be UPPER_SNAKE_CASE and a known lifecycle state
+- ACTIVE relations must have a valid `support_profile_id`
+- ACTIVE relations must reference a known support profile
+
+Lifecycle states (in order): PROPOSED → STRUCTURALLY_VALID → IMPACT_ANALYZED → CONFLICT_CHECKED → REGRESSION_TESTED → APPROVED → STAGED → ACTIVE
+
+Only ACTIVE relations are authoritative for source-support evaluation.
+
+The `/ontology/validate` endpoint:
+- is read-only; does not persist or mutate any registry
+- uses UPPER_SNAKE_CASE status codes in issues
+- returns `ONTOLOGY_VALID` or `ONTOLOGY_INVALID` in data.ontology_status
+- does not validate transitions between lifecycle states
 
 ### Invariants
 
