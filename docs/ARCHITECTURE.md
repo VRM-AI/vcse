@@ -247,3 +247,20 @@ Design constraints:
 - No remote key lookup, no LLM logic.
 - Signature validity ≠ truth (structural integrity only).
 - All responses deterministic and non-mutating.
+
+### Source Support Package (`vcse.support`) — v6.12.0
+
+Deterministic GSR-readiness contracts. Does not implement GSR project files.
+
+- `SourceSpan`: cited source span (source_id, source_span_id, text, optional metadata).
+- `CandidateClaimView`: lightweight adapter for support checks (not a CMCF record replacement).
+- `ActiveRelationView`: minimal active relation view with mandatory `support_profile_id`.
+- `SourceSupportDecision`: decision result (final_status, reason_code, supported, source_span_ids).
+- `evaluate_source_support()`: deterministic service — never emits VERIFIED or CERTIFIED.
+- Profiles: `SUPPORT_EXACT` (literal), `SUPPORT_NORMALIZED` (NFC/casefold/whitespace), `SUPPORT_RULE_DERIVED` (skeleton), `SUPPORT_AGENT_PROPOSED` (→ EXPLORATORY only), `EXPLORATORY_SUPPORT_PROFILE` (→ EXPLORATORY only).
+
+Doctrine:
+- GROUNDED (span exists) ≠ SOURCE_SUPPORTED.
+- SOURCE_SUPPORTED requires active relation + valid profile + deterministic check passing.
+- Proposal-Agent / LLM / embedding similarity cannot assign SOURCE_SUPPORTED.
+- Unknown relations → NEEDS_ONTOLOGY. Missing profile → INVALID_ONTOLOGY_RELATION.

@@ -263,7 +263,7 @@ Validation results use `status: RUNTIME_VALID | RUNTIME_INVALID | RUNTIME_ERROR`
 Benchmark reports use `status: BENCHMARK_COMPLETE | BENCHMARK_FAILED`.
 All machine values are UPPER_SNAKE_CASE. No NaN/Inf in any serialized output.
 
-## Operational API Interface (v6.11.0)
+## Operational API Interface (v6.12.0)
 
 VCSE exposes a local-first operational HTTP interface alongside the OpenAI-compat `/v1/*` adapter.
 
@@ -301,6 +301,7 @@ All operational endpoints return:
 | POST | `/pack/verify-bundle` | Verify `.vcsepack` bundle integrity |
 | POST | `/query` | Structured query over `.csrf` runtime |
 | POST | `/reason` | Reason over `.csrf` runtime (functional in v6.11.0) |
+| POST | `/support/evaluate` | Deterministic source support evaluation (v6.12.0) |
 
 ### POST /reason
 
@@ -346,6 +347,49 @@ The `/reason` endpoint:
 - does not certify claims or auto-trust signatures
 - does not infer beyond existing CLI reason behavior
 - no longer returns `API_UNSUPPORTED_OPERATION` for valid requests
+
+### POST /support/evaluate
+
+Deterministic source-support evaluation over a candidate claim, cited source spans, and active relation views.
+
+Request:
+```json
+{
+  "claim": {
+    "claim_id": "claim_timeout_001",
+    "subject": "production deployments",
+    "relation": "requires_timeout",
+    "object": "500ms",
+    "source_span_ids": ["span_001"]
+  },
+  "source_spans": [
+    {"source_id": "src_policy_001", "source_span_id": "span_001",
+     "text": "All production deployments must use a 500ms verifier timeout."}
+  ],
+  "active_relations": [
+    {"relation_id": "requires_timeout", "support_profile_id": "SUPPORT_NORMALIZED"}
+  ]
+}
+```
+
+Success response:
+```json
+{
+  "status": "OK", "version": "6.12.0", "request_id": "...",
+  "data": {"support_status": "SOURCE_SUPPORTED", "supported": true, "reason_code": "SUPPORT_PROFILE_PASSED"},
+  "errors": []
+}
+```
+
+Support statuses: `SOURCE_SUPPORTED`, `SOURCE_SUPPORT_FAILED`, `NEEDS_SOURCE`, `UNKNOWN_SOURCE_SPAN`, `NEEDS_ONTOLOGY`, `INVALID_ONTOLOGY_RELATION`, `EXPLORATORY_SUPPORT_CANDIDATE`.
+
+The `/support/evaluate` endpoint:
+- never emits `VERIFIED` or `CERTIFIED`
+- `GROUNDED` (span exists) does not imply `SOURCE_SUPPORTED`
+- Proposal-Agent/LLM judgment cannot assign `SOURCE_SUPPORTED`
+- embedding similarity cannot assign `SOURCE_SUPPORTED`
+- unknown relations return `NEEDS_ONTOLOGY`
+- missing `support_profile_id` returns `INVALID_ONTOLOGY_RELATION`
 
 ### Invariants
 

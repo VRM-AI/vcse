@@ -147,3 +147,17 @@ VCSE remains the verifier-centered execution core.
 - CLI reason behavior preserved unchanged; parity verified
 - No changes to verifier, trust, signature, proof index, or CMCF semantics
 - false_verified_count remains 0
+
+## v6.12.0 — Evidence Span + Deterministic Source Support Contracts
+
+- New package `vcse.support` implementing deterministic GSR-readiness contracts
+- `SourceSpan`, `CandidateClaimView`, `ActiveRelationView`, `SourceSupportDecision` models (frozen dataclasses)
+- Support profiles: `SUPPORT_EXACT`, `SUPPORT_NORMALIZED`, `SUPPORT_RULE_DERIVED`, `SUPPORT_AGENT_PROPOSED`, `EXPLORATORY_SUPPORT_PROFILE`
+- `evaluate_source_support()` service function — deterministic, non-mutating, never emits VERIFIED/CERTIFIED
+- API `POST /support/evaluate` endpoint using unified response contract
+- CLI `vcse support evaluate --claim --spans --relations [--json]`
+- Doctrine enforced: GROUNDED ≠ SOURCE_SUPPORTED ≠ VERIFIED
+- Proposal-Agent/LLM/embedding similarity cannot assign SOURCE_SUPPORTED
+- No changes to verifier, trust, proof, runtime, signing, or CMCF semantics
+- false_verified_count remains 0
+- v6.12 is the VCSE-side GSR-readiness contract; GSR project files not included

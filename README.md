@@ -113,11 +113,11 @@ vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
 ```
 
-## Operational API Server (v6.11.0)
+## Operational API Server (v6.12.0)
 
 `vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
 
-Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, and reasoning:
+Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, reasoning, and source support:
 - `/health` — service health status
 - `/version` — VCSE and Python versions
 - `/ready` — readiness probe
@@ -127,8 +127,19 @@ Operational endpoints for health, readiness, runtime/proof/bundle validation, st
 - `/pack/verify-bundle` — verify `.vcsepack` bundle integrity
 - `/query` — structured deterministic query over `.csrf` runtime
 - `/reason` — reason over `.csrf` runtime (functional in v6.11.0)
+- `/support/evaluate` — deterministic source support evaluation (v6.12.0)
 
 See [docs/API.md](docs/API.md) for response contract and examples.
+
+## Deterministic Source Support (v6.12.0)
+
+VCSE enforces a strict source-support boundary:
+
+- **GROUNDED**: cited source span exists — does not imply SOURCE_SUPPORTED
+- **SOURCE_SUPPORTED**: deterministic profile check passed — does not imply VERIFIED
+- **VERIFIED**: verifier produced proof — does not imply CERTIFIED
+
+Proposal-Agent/LLM judgment and embedding similarity cannot assign `SOURCE_SUPPORTED`. Active relations require a `support_profile_id`. Unknown relations return `NEEDS_ONTOLOGY`.
 
 ## CAKE — Knowledge Acquisition
 
