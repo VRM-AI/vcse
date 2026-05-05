@@ -191,11 +191,25 @@ External systems may submit candidates only. VCSE owns canonicalization, verific
 - API `POST /proposal/validate` (unified response contract).
 - CLI `vcse proposal validate --proposal <file> --json`.
 - 63 contract tests.
-- Deferred: Ledger Event Taxonomy, Renderer Guard, external runtime project files.
+- Deferred: Renderer Guard, external runtime project files.
+
+### v6.15.0 — Ledger Event Taxonomy
+
+Typed, deterministic outcome records for important VCSE events.
+
+- `vcse.ledger.{model,taxonomy,validate,serialize,factory}` — event schema, taxonomy constants, validation, deterministic serialization, factory helpers.
+- Events record outcomes; they do not create truth or authority. Negative and block events are first-class.
+- 42 required event types across SOURCE, CLAIM, PROPOSAL, ONTOLOGY, PROOF, TRUST, CERTIFICATION, CONFLICT, POLICY, RUNTIME, DISTRIBUTION, API categories.
+- Validation rejects unknown types, missing fields, invalid timestamps, non-finite values, and authority override details.
+- Forbidden detail keys: `verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`, `verified`, `certified`, `source_supported`.
+- API `POST /ledger/validate` (unified response contract).
+- CLI `vcse ledger validate --event <file> --json`.
+- JSONL writer (`vcse.ledger.jsonl`) for optional file output.
+- 74 contract tests.
+- Deferred: Renderer Guard, Repair Contract Foundation, Integration Adapter Contracts, automatic persistence.
 
 ### Next
 
-- v6.15.0   Ledger Event Taxonomy
 - v6.16.0   Renderer Guard + Answer Verification
 - v6.17.0   Repair Contract Foundation
 - v6.18.0   Integration Adapter Contracts

@@ -113,11 +113,11 @@ vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
 ```
 
-## Operational API Server (v6.14.0)
+## Operational API Server (v6.15.0)
 
 `vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
 
-Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, reasoning, source support, ontology governance, and candidate proposal validation:
+Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, reasoning, source support, ontology governance, candidate proposal validation, and ledger event taxonomy validation:
 - `/health` — service health status
 - `/version` — VCSE and Python versions
 - `/ready` — readiness probe
@@ -130,6 +130,7 @@ Operational endpoints for health, readiness, runtime/proof/bundle validation, st
 - `/support/evaluate` — deterministic source support evaluation (v6.12.0)
 - `/ontology/validate` — ontology registry validation (v6.13.0)
 - `/proposal/validate` — candidate proposal contract validation (v6.14.0)
+- `/ledger/validate` — ledger event taxonomy validation (v6.15.0)
 
 See [docs/API.md](docs/API.md) for response contract and examples.
 
@@ -157,6 +158,22 @@ Key invariants:
 - Forbidden authority fields (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`) are **rejected**, not silently stripped.
 - Unknown fields are rejected.
 - VCSE does not auto-promote or auto-certify candidate proposals.
+
+## Ledger Event Taxonomy (v6.15.0)
+
+Typed, deterministic records for important VCSE outcomes — validation results, promotion decisions, certification blocks, conflicts, policy actions, and more.
+
+```bash
+vcse ledger validate --event event.json --json
+```
+
+Key invariants:
+- Ledger events **record** outcomes; they do not **create** truth or authority.
+- Negative and block events are first-class alongside positive events.
+- No event may produce VERIFIED, CERTIFIED, T4, or T5 trust tiers.
+- `details` may not contain authority override keys or NaN/Inf values.
+- Events use deterministic UPPER_SNAKE_CASE event types, statuses, and reason codes.
+- v6.15 does not implement automatic persistence, Renderer Guard, or Repair Contracts.
 
 ## CAKE — Knowledge Acquisition
 

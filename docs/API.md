@@ -553,3 +553,69 @@ Validates a candidate proposal. External systems may submit candidate material o
 ### Rejection reason codes (UPPER_SNAKE_CASE)
 
 `MISSING_PROPOSAL_VERSION`, `MISSING_PROPOSAL_KIND`, `INVALID_PROPOSAL_KIND`, `MISSING_CANDIDATE_KIND`, `INVALID_CANDIDATE_KIND`, `MISSING_CLAIMS`, `INVALID_CLAIMS`, `MISSING_CLAIM_ID`, `MISSING_CLAIM_TYPE`, `MISSING_CLAIM_STATUS`, `INVALID_CLAIM_STATUS`, `MISSING_CLAIM_SUBJECT`, `MISSING_CLAIM_PREDICATE`, `MISSING_CLAIM_OBJECT`, `MISSING_SOURCE_SPAN_IDS`, `INVALID_SOURCE_SPAN_IDS`, `FORBIDDEN_VERIFICATION_STATUS`, `FORBIDDEN_CERTIFICATION_STATUS`, `FORBIDDEN_TRUST_TIER`, `FORBIDDEN_AUTHORITATIVE_SUPPORT_PROFILE`, `UNKNOWN_TOP_LEVEL_FIELD`, `UNKNOWN_CLAIM_FIELD`, `PAYLOAD_TOO_LARGE`, `STATUS_CASING_INVALID`, `NON_FINITE_VALUE`.
+
+---
+
+## POST /ledger/validate
+
+Validates a ledger event against the Ledger Event Taxonomy. Records are typed, deterministic outcome descriptors — they do not create VERIFIED, CERTIFIED, or T4/T5 trust tiers.
+
+```json
+{
+  "event_id": "ev-abc123",
+  "event_type": "CLAIM_PROPOSED",
+  "event_version": "1.0",
+  "timestamp": "2026-05-05T12:00:00Z",
+  "actor_type": "API",
+  "source_system": "VCSE",
+  "subject_kind": "CLAIM",
+  "final_status": "CLAIM_PROPOSED",
+  "reason_code": "CLAIM_SCHEMA_VALID",
+  "severity": "INFO"
+}
+```
+
+### Response — valid event
+
+```json
+{
+  "status": "OK",
+  "version": "6.15.0",
+  "request_id": "...",
+  "data": {
+    "ledger_event_status": "LEDGER_EVENT_VALID",
+    "valid": true,
+    "event_type": "CLAIM_PROPOSED",
+    "issue_count": 0,
+    "issues": []
+  },
+  "errors": []
+}
+```
+
+### Response — invalid event
+
+```json
+{
+  "status": "OK",
+  "version": "6.15.0",
+  "request_id": "...",
+  "data": {
+    "ledger_event_status": "LEDGER_EVENT_INVALID",
+    "valid": false,
+    "event_type": null,
+    "issue_count": 1,
+    "issues": ["MISSING_EVENT_TYPE"]
+  },
+  "errors": []
+}
+```
+
+### Ledger Event Taxonomy Contract
+
+- Ledger events record outcomes; they do not create truth or authority.
+- Negative and block events are first-class.
+- All machine values (event types, statuses, reason codes) must be UPPER_SNAKE_CASE.
+- `details` may not contain authority override keys (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`, `verified`, `certified`, `source_supported`).
+- `details` may not contain NaN or Inf values.
+- This endpoint has no side effects — it does not persist, verify, promote, or certify anything.

@@ -301,3 +301,22 @@ Core invariants:
 - Unknown top-level or claim-level fields are rejected.
 - Payload limit: 1 MiB.
 - API `POST /proposal/validate` and CLI `vcse proposal validate` use command-native JSON (CLI not API-wrapped).
+
+### Ledger Event Taxonomy (`vcse.ledger.{model,taxonomy,validate,serialize,factory}`) — v6.15.0
+
+Typed, deterministic outcome records for important VCSE events.
+
+- `model`: constants (severities, actor types, subject kinds, forbidden detail keys) and frozen dataclasses (`LedgerEvent`, `LedgerEventValidationResult`). Distinct from the hash-chain `LedgerEvent` in `vcse.ledger.events`.
+- `taxonomy`: UPPER_SNAKE_CASE event type constants and category mapping. Static in v6.15. `is_known_event_type()`, `event_category()`.
+- `validate`: `validate_ledger_event()`, `validate_ledger_event_dict()` — rejects unknown types, missing fields, invalid timestamps, non-finite values, and authority override details. Never calls verifier, trust promoter, source-support service, or any certification path.
+- `serialize`: `ledger_event_to_dict()`, `ledger_event_to_json()`, `ledger_event_validation_result_to_dict()`, `ledger_event_validation_result_to_json()` — deterministic, `sort_keys=True`, `allow_nan=False`.
+- `factory`: `make_ledger_event()` and specific adapters (`event_from_proposal_validation`, `event_from_source_support_decision`, `event_from_ontology_validation`) — create event objects only, no filesystem writes, no network, no verifier calls.
+
+Core invariants:
+- Ledger events **record** outcomes; they do not **create** truth or authority.
+- Negative and block events are first-class alongside positive events.
+- No event may produce VERIFIED, CERTIFIED, T4, or T5 trust tiers.
+- Ledger events must not auto-promote or auto-certify.
+- `details` may not contain authority override keys (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`, `verified`, `certified`, `source_supported`).
+- v6.15 does not implement automatic persistence (no required JSONL writes), Renderer Guard, Repair Contracts, or Integration Adapter Contracts.
+- API `POST /ledger/validate` and CLI `vcse ledger validate` are available in v6.15.
