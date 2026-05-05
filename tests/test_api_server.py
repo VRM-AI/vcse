@@ -215,7 +215,7 @@ def test_query_endpoint_invalid_csrf_returns_error() -> None:
     assert payload["errors"]
 
 
-# --- Test 14: reason endpoint returns API_UNSUPPORTED_OPERATION ---
+# --- Test 14: reason endpoint is functional in v6.11.0 ---
 def test_reason_endpoint_returns_unsupported_or_valid() -> None:
     resp = _client().post("/reason", json={
         "csrf_path": "/tmp/any.csrf",
@@ -225,8 +225,12 @@ def test_reason_endpoint_returns_unsupported_or_valid() -> None:
     })
     payload = resp.json()
     assert payload["status"] in ("OK", "ERROR")
+    assert "errors" in payload
+    assert isinstance(payload["errors"], list)
+    assert "data" in payload
+    assert isinstance(payload["data"], dict)
     if payload["status"] == "ERROR":
-        assert any(e["code"] == "API_UNSUPPORTED_OPERATION" for e in payload["errors"])
+        assert all(e["code"] != "API_UNSUPPORTED_OPERATION" for e in payload["errors"])
 
 
 # --- Test 15: no response leaks raw traceback ---
@@ -311,3 +315,123 @@ def test_internal_error_handler_uses_api_internal_error_contract() -> None:
     assert "Traceback" not in payload_text
     assert "traceback" not in payload_text
     assert "synthetic internal error" not in payload_text
+
+
+# --- /reason v6.11.0 tests ---
+
+def _make_valid_csrf(tmp_path: Path) -> Path:
+    from vcse.runtime.model import CSRFIndex, CSRFRecord
+    from vcse.runtime.serialize import save_csrf
+    record = CSRFRecord(
+        claim_id="c1", subject="Alice", relation="knows", object="Bob",
+        trust_tier=3, lifecycle_status="certified", verification_status="VERIFIED",
+        provenance_id="prov-1",
+    )
+    index = CSRFIndex(
+        records=(record,),
+        by_subject={"Alice": (0,)},
+        by_relation={"knows": (0,)},
+        by_object={"Bob": (0,)},
+    )
+    path = tmp_path / "test.csrf"
+    save_csrf(index, path)
+    return path
+
+
+def test_reason_valid_csrf_returns_ok(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["status"] == "OK"
+    assert "reason_status" in payload["data"]
+    assert payload["data"]["reason_status"] == "REASON_COMPLETE"
+
+
+def test_reason_response_follows_unified_contract(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    payload = resp.json()
+    assert "status" in payload
+    assert "version" in payload
+    assert "request_id" in payload
+    assert isinstance(payload["errors"], list)
+    assert isinstance(payload["data"], dict)
+
+
+def test_reason_echoes_request_id(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)}, headers={"X-Request-ID": "test-reason-123"})
+    payload = resp.json()
+    assert payload["request_id"] == "test-reason-123"
+    assert resp.headers.get("X-Request-ID") == "test-reason-123"
+
+
+def test_reason_missing_file_returns_not_found() -> None:
+    resp = _client().post("/reason", json={"csrf_path": "/tmp/vcse_nonexistent_reason_test.csrf"})
+    payload = resp.json()
+    assert payload["status"] == "ERROR"
+    assert any(e["code"] == "API_NOT_FOUND" for e in payload["errors"])
+
+
+def test_reason_invalid_runtime_returns_runtime_invalid(tmp_path: Path) -> None:
+    bad_csrf = tmp_path / "bad.csrf"
+    bad_csrf.write_text(
+        '{"records":[{"claim_id":"c1","subject":"A","relation":"r","object":"B",'
+        '"trust_tier":-1,"lifecycle_status":"candidate","verification_status":"NO_PROOF",'
+        '"provenance_id":"p1"}],"by_subject":{"A":[0]},"by_relation":{"r":[0]},"by_object":{"B":[0]}}',
+        encoding="utf-8",
+    )
+    resp = _client().post("/reason", json={"csrf_path": str(bad_csrf)})
+    payload = resp.json()
+    assert payload["status"] == "ERROR"
+    assert any(e["code"] == "API_RUNTIME_INVALID" for e in payload["errors"])
+
+
+def test_reason_invalid_proof_index_returns_proof_invalid(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    bad_proof = tmp_path / "bad.proof.json"
+    bad_proof.write_text(
+        '{"proofs":[{"proof_id":"","result_claim_id":"c1","path_length":-1,'
+        '"trust_tier":0,"verification_status":"VERIFIED","steps":[]}]}',
+        encoding="utf-8",
+    )
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path), "proof_index_path": str(bad_proof)})
+    payload = resp.json()
+    assert payload["status"] == "ERROR"
+    assert any(e["code"] == "API_PROOF_INVALID" for e in payload["errors"])
+
+
+def test_reason_does_not_return_unsupported_operation(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    payload = resp.json()
+    assert all(e.get("code") != "API_UNSUPPORTED_OPERATION" for e in payload.get("errors", []))
+
+
+def test_reason_no_raw_traceback() -> None:
+    resp = _client().post("/reason", json={"csrf_path": "/tmp/vcse_nonexistent.csrf"})
+    payload_str = json.dumps(resp.json())
+    assert "Traceback" not in payload_str
+    assert 'File "' not in payload_str
+
+
+def test_reason_statuses_upper_snake_case(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    payload = resp.json()
+    assert payload["status"] in ("OK", "ERROR")
+    if payload["status"] == "OK":
+        assert payload["data"]["reason_status"] == payload["data"]["reason_status"].upper()
+
+
+def test_reason_errors_always_list(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    assert isinstance(resp.json()["errors"], list)
+
+
+def test_reason_data_always_object(tmp_path: Path) -> None:
+    csrf_path = _make_valid_csrf(tmp_path)
+    resp = _client().post("/reason", json={"csrf_path": str(csrf_path)})
+    assert isinstance(resp.json()["data"], dict)
