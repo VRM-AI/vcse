@@ -749,6 +749,81 @@ def run_reasonops_report(path: Path) -> str:
     return generate_report(path)
 
 
+def run_support_evaluate(
+    claim_file: Path,
+    spans_file: Path,
+    relations_file: Path,
+    json_output: bool = False,
+) -> str:
+    """Handle vcse support evaluate command."""
+    from vcse.support.model import ActiveRelationView, CandidateClaimView, SourceSpan
+    from vcse.support.serialize import source_support_decision_to_dict
+    from vcse.support.service import evaluate_source_support
+
+    claim_data = json.loads(claim_file.read_text(encoding="utf-8"))
+    spans_data = json.loads(spans_file.read_text(encoding="utf-8"))
+    relations_data = json.loads(relations_file.read_text(encoding="utf-8"))
+
+    claim = CandidateClaimView(
+        claim_id=str(claim_data.get("claim_id", "")),
+        subject=str(claim_data.get("subject", "")),
+        relation=str(claim_data.get("relation", "")),
+        object=str(claim_data.get("object", "")),
+        source_span_ids=tuple(claim_data.get("source_span_ids", [])),
+        ontology_version=claim_data.get("ontology_version"),
+    )
+
+    spans: dict[str, SourceSpan] = {}
+    for s in spans_data if isinstance(spans_data, list) else spans_data.get("spans", []):
+        span = SourceSpan(
+            source_id=str(s.get("source_id", "")),
+            source_span_id=str(s.get("source_span_id", "")),
+            text=str(s.get("text", "")),
+            source_uri=s.get("source_uri"),
+            content_hash=s.get("content_hash"),
+            span_hash=s.get("span_hash"),
+            start_offset=s.get("start_offset"),
+            end_offset=s.get("end_offset"),
+            metadata=s.get("metadata", {}),
+        )
+        spans[span.source_span_id] = span
+
+    relations: dict[str, ActiveRelationView] = {}
+    for r in relations_data if isinstance(relations_data, list) else relations_data.get("relations", []):
+        rel = ActiveRelationView(
+            relation_id=str(r.get("relation_id", "")),
+            support_profile_id=str(r.get("support_profile_id", "")),
+            subject_types=tuple(r.get("subject_types", [])),
+            object_types=tuple(r.get("object_types", [])),
+            functional=bool(r.get("functional", False)),
+            ontology_version=r.get("ontology_version"),
+            allowed_support_profiles=tuple(r.get("allowed_support_profiles", [])),
+        )
+        relations[rel.relation_id] = rel
+
+    decision = evaluate_source_support(claim, spans, relations)
+
+    if json_output:
+        return json.dumps(source_support_decision_to_dict(decision), sort_keys=True, indent=2)
+
+    d = source_support_decision_to_dict(decision)
+    lines = [
+        f"final_status: {d['final_status']}",
+        f"supported: {d['supported']}",
+        f"reason_code: {d['reason_code']}",
+        f"claim_id: {d['claim_id']}",
+        f"relation_id: {d['relation_id']}",
+        f"support_profile_id: {d['support_profile_id']}",
+    ]
+    if d["source_span_ids"]:
+        lines.append(f"source_span_ids: {', '.join(d['source_span_ids'])}")
+    if d["issues"]:
+        lines.append("issues:")
+        for issue in d["issues"]:
+            lines.append(f"  - {issue}")
+    return "\n".join(lines)
+
+
 def run_ingest(
     source: str,
     json_output: bool = False,
@@ -4596,6 +4671,14 @@ def main(argv: list[str] | None = None) -> None:
     reasonops_report_parser = reasonops_subparsers.add_parser("report")
     reasonops_report_parser.add_argument("path", type=Path)
 
+    support_parser = subparsers.add_parser("support")
+    support_subparsers = support_parser.add_subparsers(dest="support_command")
+    support_evaluate_parser = support_subparsers.add_parser("evaluate")
+    support_evaluate_parser.add_argument("--claim", required=True, type=Path, dest="claim_file")
+    support_evaluate_parser.add_argument("--spans", required=True, type=Path, dest="spans_file")
+    support_evaluate_parser.add_argument("--relations", required=True, type=Path, dest="relations_file")
+    support_evaluate_parser.add_argument("--json", action="store_true", dest="json_output")
+
     dsl_parser = subparsers.add_parser("dsl")
     dsl_subparsers = dsl_parser.add_subparsers(dest="dsl_command")
     dsl_validate_parser = dsl_subparsers.add_parser("validate")
@@ -6082,6 +6165,18 @@ def main(argv: list[str] | None = None) -> None:
                 print(run_reasonops_report(args.path))
             else:
                 reasonops_subparsers.print_help()
+            return
+
+        if args.command == "support":
+            if args.support_command == "evaluate":
+                print(run_support_evaluate(
+                    claim_file=args.claim_file,
+                    spans_file=args.spans_file,
+                    relations_file=args.relations_file,
+                    json_output=args.json_output,
+                ))
+            else:
+                support_subparsers.print_help()
             return
 
         if args.command == "integrity":
