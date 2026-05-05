@@ -936,6 +936,29 @@ def run_ontology_relations(registry_file: Path, active_only: bool = False, json_
     return "\n".join(lines)
 
 
+def run_proposal_validate(proposal_file: Path, json_output: bool = False) -> str:
+    from vcse.proposal.validate import load_and_validate_candidate_proposal_json
+    raw = proposal_file.read_text(encoding="utf-8")
+    _proposal_obj, result = load_and_validate_candidate_proposal_json(raw)
+    if json_output:
+        return json.dumps({
+            "proposal_status": result.status,
+            "accepted": result.accepted,
+            "claim_count": result.claim_count,
+            "issues": list(result.issues),
+        }, sort_keys=True, indent=2)
+    lines = [
+        f"proposal_status: {result.status}",
+        f"accepted: {result.accepted}",
+        f"claim_count: {result.claim_count}",
+    ]
+    if result.issues:
+        lines.append("issues:")
+        for code in result.issues:
+            lines.append(f"  - {code}")
+    return "\n".join(lines)
+
+
 def run_ingest(
     source: str,
     json_output: bool = False,
@@ -4801,6 +4824,12 @@ def main(argv: list[str] | None = None) -> None:
     ontology_relations_parser.add_argument("--active-only", action="store_true", dest="active_only")
     ontology_relations_parser.add_argument("--json", action="store_true", dest="json_output")
 
+    proposal_parser = subparsers.add_parser("proposal")
+    proposal_subparsers = proposal_parser.add_subparsers(dest="proposal_command")
+    proposal_validate_parser = proposal_subparsers.add_parser("validate")
+    proposal_validate_parser.add_argument("--proposal", required=True, type=Path, dest="proposal_file")
+    proposal_validate_parser.add_argument("--json", action="store_true", dest="json_output")
+
     dsl_parser = subparsers.add_parser("dsl")
     dsl_subparsers = dsl_parser.add_subparsers(dest="dsl_command")
     dsl_validate_parser = dsl_subparsers.add_parser("validate")
@@ -6312,6 +6341,13 @@ def main(argv: list[str] | None = None) -> None:
                 ))
             else:
                 ontology_subparsers.print_help()
+            return
+
+        if args.command == "proposal":
+            if args.proposal_command == "validate":
+                print(run_proposal_validate(args.proposal_file, json_output=args.json_output))
+            else:
+                proposal_subparsers.print_help()
             return
 
         if args.command == "integrity":
