@@ -2,7 +2,12 @@ import os
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from vcse.api.server import create_app
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
@@ -15,6 +20,47 @@ def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         env=env,
         text=True,
     )
+
+
+def _write_reason_csrf(path: Path) -> None:
+    from vcse.runtime.model import CSRFIndex, CSRFRecord
+    from vcse.runtime.serialize import save_csrf
+
+    records = (
+        CSRFRecord(
+            claim_id="c1",
+            subject="Socrates",
+            relation="has_type",
+            object="human",
+            trust_tier=4,
+            lifecycle_status="certified",
+            verification_status="VERIFIED",
+            provenance_id="prov-1",
+        ),
+        CSRFRecord(
+            claim_id="c2",
+            subject="human",
+            relation="implies",
+            object="mortal",
+            trust_tier=4,
+            lifecycle_status="certified",
+            verification_status="VERIFIED",
+            provenance_id="prov-2",
+        ),
+    )
+    save_csrf(
+        CSRFIndex(
+            records=records,
+            by_subject={"Socrates": (0,), "human": (1,)},
+            by_relation={"has_type": (0,), "implies": (1,)},
+            by_object={"human": (0,), "mortal": (1,)},
+        ),
+        path,
+    )
+
+
+def _api_client() -> TestClient:
+    return TestClient(create_app())
 
 
 def test_cli_logic_demo_outputs_verified_trace() -> None:
@@ -441,3 +487,63 @@ def test_cli_generate_with_dsl_template_and_index() -> None:
     assert result.returncode == 0
     assert "status: VERIFIED_ARTIFACT" in result.stdout
     assert "template_stats:" in result.stdout
+
+
+def test_cli_reason_json_no_api_wrapper_fields(tmp_path: Path) -> None:
+    csrf_path = tmp_path / "reason.csrf"
+    _write_reason_csrf(csrf_path)
+
+    result = run_cli("reason", "--csrf", str(csrf_path), "--json")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "GLOBAL_REASONING_COMPLETE"
+    assert "version" not in payload
+    assert "request_id" not in payload
+    assert "data" not in payload
+    assert "errors" not in payload
+
+
+def test_cli_api_reason_inferred_count_parity(tmp_path: Path) -> None:
+    csrf_path = tmp_path / "reason.csrf"
+    _write_reason_csrf(csrf_path)
+
+    cli_result = run_cli("reason", "--csrf", str(csrf_path), "--json")
+    assert cli_result.returncode == 0
+    cli_payload = json.loads(cli_result.stdout)
+
+    api_payload = _api_client().post("/reason", json={"csrf_path": str(csrf_path)}).json()
+    assert api_payload["status"] == "OK"
+    assert cli_payload["status"] == "GLOBAL_REASONING_COMPLETE"
+    assert len(cli_payload["inferred_claims"]) == api_payload["data"]["inferred_count"]
+
+
+def test_cli_reason_explain_parity_with_api(tmp_path: Path) -> None:
+    csrf_path = tmp_path / "reason.csrf"
+    _write_reason_csrf(csrf_path)
+
+    cli_result = run_cli("reason", "--csrf", str(csrf_path), "--json", "--explain")
+    assert cli_result.returncode == 0
+    cli_payload = json.loads(cli_result.stdout)
+
+    api_payload = _api_client().post(
+        "/reason",
+        json={"csrf_path": str(csrf_path), "explain": True},
+    ).json()
+    assert api_payload["status"] == "OK"
+    assert cli_payload["explanations"]["trace_count"] == api_payload["data"]["explanations"]["trace_count"]
+
+
+def test_cli_reason_invalid_proof_index_fails_structured(tmp_path: Path) -> None:
+    csrf_path = tmp_path / "reason.csrf"
+    _write_reason_csrf(csrf_path)
+    bad_proof = tmp_path / "bad.proof.json"
+    bad_proof.write_text(
+        '{"proofs":[{"proof_id":"","result_claim_id":"c1","path_length":-1,'
+        '"trust_tier":0,"verification_status":"VERIFIED","steps":[]}]}',
+        encoding="utf-8",
+    )
+
+    result = run_cli("reason", "--csrf", str(csrf_path), "--proof-index", str(bad_proof))
+    assert result.returncode == 2
+    assert "status: ERROR" in result.stderr
+    assert "PROOF_VALIDATION_FAILED" in result.stderr
