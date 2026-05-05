@@ -444,7 +444,7 @@ Error response (invalid ontology):
     "issue_count": 2,
     "issues": [
       {"code": "ACTIVE_RELATION_MISSING_SUPPORT_PROFILE", "message": "ACTIVE relation requires support_profile_id", "path": "relation['requires_timeout'].support_profile_id"},
-      {"code": "MISSING_ONTOLOGY_VERSION", "message": "ontology_version is required", "path": "ontology_version"}
+      {"code": "ONTOLOGY_VERSION_REQUIRED", "message": "ontology_version is required", "path": "ontology_version"}
     ]
   },
   "errors": []
@@ -477,3 +477,79 @@ The API never:
 - introduces probabilistic or LLM-based logic
 
 Bundle signature validity is not truth. `BUNDLE_VALID` means structurally sound + signatures match; it does not certify claims.
+
+---
+
+## POST /proposal/validate
+
+Validates a candidate proposal. External systems may submit candidate material only — VCSE owns canonicalization, verification, and trust promotion.
+
+### Request body
+
+```json
+{
+  "proposal_version": "1.0",
+  "proposal_kind": "CANDIDATE_PROPOSAL",
+  "candidate_kind": "FACTUAL_CLAIM_PACK",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_type": "FACTUAL",
+      "status": "PROPOSED",
+      "subject": "Paris",
+      "predicate": "is_capital_of",
+      "object": "France",
+      "source_span_ids": ["span-001"]
+    }
+  ]
+}
+```
+
+### Response — valid proposal
+
+```json
+{
+  "status": "OK",
+  "version": "6.14.0",
+  "request_id": "...",
+  "data": {
+    "proposal_status": "PROPOSAL_VALID",
+    "accepted": true,
+    "claim_count": 1,
+    "issues": []
+  },
+  "errors": []
+}
+```
+
+### Response — invalid proposal
+
+```json
+{
+  "status": "OK",
+  "version": "6.14.0",
+  "request_id": "...",
+  "data": {
+    "proposal_status": "PROPOSAL_INVALID",
+    "accepted": false,
+    "claim_count": 0,
+    "issues": ["MISSING_PROPOSAL_VERSION"]
+  },
+  "errors": []
+}
+```
+
+### Candidate Proposal Contract
+
+- External callers may submit candidate material only.
+- `CANDIDATE_ACCEPTED` does not mean VERIFIED, CERTIFIED, or SOURCE_SUPPORTED.
+- Input claim `status` must be `PROPOSED`. Any other value is rejected.
+- Forbidden authority fields (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`) are **rejected**, not silently stripped.
+- Unknown top-level or claim-level fields are rejected.
+- Payload must be ≤ 1 MiB.
+- VCSE owns all status transitions: canonicalization, source-support, verification, trust promotion, and certification.
+- This endpoint has no side effects — it does not persist, verify, promote, or certify anything.
+
+### Rejection reason codes (UPPER_SNAKE_CASE)
+
+`MISSING_PROPOSAL_VERSION`, `MISSING_PROPOSAL_KIND`, `INVALID_PROPOSAL_KIND`, `MISSING_CANDIDATE_KIND`, `INVALID_CANDIDATE_KIND`, `MISSING_CLAIMS`, `INVALID_CLAIMS`, `MISSING_CLAIM_ID`, `MISSING_CLAIM_TYPE`, `MISSING_CLAIM_STATUS`, `INVALID_CLAIM_STATUS`, `MISSING_CLAIM_SUBJECT`, `MISSING_CLAIM_PREDICATE`, `MISSING_CLAIM_OBJECT`, `MISSING_SOURCE_SPAN_IDS`, `INVALID_SOURCE_SPAN_IDS`, `FORBIDDEN_VERIFICATION_STATUS`, `FORBIDDEN_CERTIFICATION_STATUS`, `FORBIDDEN_TRUST_TIER`, `FORBIDDEN_AUTHORITATIVE_SUPPORT_PROFILE`, `UNKNOWN_TOP_LEVEL_FIELD`, `UNKNOWN_CLAIM_FIELD`, `PAYLOAD_TOO_LARGE`, `STATUS_CASING_INVALID`, `NON_FINITE_VALUE`.

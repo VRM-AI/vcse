@@ -113,11 +113,11 @@ vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
 ```
 
-## Operational API Server (v6.13.0)
+## Operational API Server (v6.14.0)
 
 `vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
 
-Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, reasoning, and source support:
+Operational endpoints for health, readiness, runtime/proof/bundle validation, structured queries, reasoning, source support, ontology governance, and candidate proposal validation:
 - `/health` — service health status
 - `/version` — VCSE and Python versions
 - `/ready` — readiness probe
@@ -129,6 +129,7 @@ Operational endpoints for health, readiness, runtime/proof/bundle validation, st
 - `/reason` — reason over `.csrf` runtime (functional in v6.11.0)
 - `/support/evaluate` — deterministic source support evaluation (v6.12.0)
 - `/ontology/validate` — ontology registry validation (v6.13.0)
+- `/proposal/validate` — candidate proposal contract validation (v6.14.0)
 
 See [docs/API.md](docs/API.md) for response contract and examples.
 
@@ -141,6 +142,21 @@ VCSE enforces a strict source-support boundary:
 - **VERIFIED**: verifier produced proof — does not imply CERTIFIED
 
 Proposal-Agent/LLM judgment and embedding similarity cannot assign `SOURCE_SUPPORTED`. Active relations require a `support_profile_id`. Unknown relations return `NEEDS_ONTOLOGY`.
+
+## Candidate Proposal Contract (v6.14.0)
+
+External systems may submit candidate material only. VCSE owns canonicalization, verification, trust promotion, and certification.
+
+```bash
+vcse proposal validate --proposal candidate.json --json
+```
+
+Key invariants:
+- `CANDIDATE_ACCEPTED` ≠ VERIFIED, CERTIFIED, or SOURCE_SUPPORTED.
+- Input claim `status` must be `PROPOSED` — any other value is rejected.
+- Forbidden authority fields (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`) are **rejected**, not silently stripped.
+- Unknown fields are rejected.
+- VCSE does not auto-promote or auto-certify candidate proposals.
 
 ## CAKE — Knowledge Acquisition
 

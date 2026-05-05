@@ -177,10 +177,25 @@ VCSE remains deterministic correctness infrastructure. External runtime / agent 
 - v6.11.0   reason service + functional API /reason
 - v6.12.0   deterministic source-support contracts
 - v6.13.0   ontology governance foundation
+- v6.14.0   candidate proposal contract (external input safety boundary)
+
+### v6.14.0 — Candidate Proposal Contract
+
+External systems may submit candidates only. VCSE owns canonicalization, verification, trust promotion, and certification.
+
+- `vcse.proposal` package: models, validation, adapter, serialization.
+- Forbidden authority fields (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`) rejected, not stripped.
+- Input claim status must be `PROPOSED`. All other statuses rejected.
+- Unknown top-level or claim-level fields rejected.
+- Payload limit: 1 MiB.
+- API `POST /proposal/validate` (unified response contract).
+- CLI `vcse proposal validate --proposal <file> --json`.
+- 63 contract tests.
+- Deferred: Ledger Event Taxonomy, Renderer Guard, external runtime project files.
 
 ### Next
 
-- v6.14.0   Candidate Proposal Contract
+- v6.15.0   Ledger Event Taxonomy
 - v6.15.0   Ledger Event Taxonomy
 - v6.16.0   Renderer Guard + Answer Verification
 - v6.17.0   Repair Contract Foundation

@@ -283,3 +283,21 @@ Design constraints:
 - Ontology versions are immutable once ACTIVE.
 - API `/ontology/validate` endpoint uses unified response contract.
 - CLI `vcse ontology validate` and `vcse ontology relations` commands are command-native JSON (not API-wrapped).
+
+### Candidate Proposal Package (`vcse.proposal`) — v6.14.0
+
+External input safety boundary. Enforces the Candidate Proposal Contract.
+
+- `model`: machine constants (`CANDIDATE_PROPOSAL`, `FACTUAL_CLAIM_PACK`, `PROPOSED`, `CANDIDATE_ACCEPTED`, etc.) and frozen dataclasses (`CandidateClaimProposal`, `CandidateProposal`, `CandidateProposalValidationResult`, `CandidateProposalAdapterResult`).
+- `validate`: `validate_candidate_proposal_dict()`, `load_and_validate_candidate_proposal_json()` — structural validation only; never calls verifier, trust promoter, or source-support service.
+- `adapter`: `proposal_to_candidate_claim_views()` — converts valid proposals to candidate views; output remains `CANDIDATE_ACCEPTED`, never VERIFIED or SOURCE_SUPPORTED.
+- `serialize`: deterministic JSON serialization with `sort_keys=True, allow_nan=False`.
+
+Core invariants:
+- External callers submit candidate material only. VCSE owns canonicalization, verification, trust promotion, and certification.
+- `CANDIDATE_ACCEPTED` ≠ VERIFIED, CERTIFIED, or SOURCE_SUPPORTED.
+- Input claim `status` must be `PROPOSED`. Any other value is rejected.
+- Forbidden authority fields (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`) are **rejected**, not silently stripped.
+- Unknown top-level or claim-level fields are rejected.
+- Payload limit: 1 MiB.
+- API `POST /proposal/validate` and CLI `vcse proposal validate` use command-native JSON (CLI not API-wrapped).
