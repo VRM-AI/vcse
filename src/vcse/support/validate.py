@@ -22,24 +22,38 @@ def validate_source_span(span_dict: dict[str, Any]) -> list[SupportValidationIss
         issues.append(SupportValidationIssue("MISSING_SOURCE_ID", "source_id is required", "source_id"))
     if not str(span_dict.get("source_span_id", "")).strip():
         issues.append(SupportValidationIssue("MISSING_SOURCE_SPAN_ID", "source_span_id is required", "source_span_id"))
+    if "text" not in span_dict:
+        issues.append(SupportValidationIssue("MISSING_SOURCE_TEXT", "text is required", "text"))
+    elif not isinstance(span_dict.get("text"), str):
+        issues.append(SupportValidationIssue("INVALID_SOURCE_TEXT", "text must be a string", "text"))
     _check_nan_inf_dict(span_dict, "", issues)
     return issues
 
 
 def validate_candidate_claim_view(claim_dict: dict[str, Any]) -> list[SupportValidationIssue]:
     issues: list[SupportValidationIssue] = []
+    if not str(claim_dict.get("claim_id", "")).strip():
+        issues.append(SupportValidationIssue("MISSING_CLAIM_ID", "claim_id is required", "claim_id"))
+    if not str(claim_dict.get("subject", "")).strip():
+        issues.append(SupportValidationIssue("MISSING_CLAIM_SUBJECT", "subject is required", "subject"))
     if not str(claim_dict.get("relation", "")).strip():
         issues.append(SupportValidationIssue("MISSING_CLAIM_RELATION", "relation is required", "relation"))
+    if not str(claim_dict.get("object", "")).strip():
+        issues.append(SupportValidationIssue("MISSING_CLAIM_OBJECT", "object is required", "object"))
+    _check_nan_inf_dict(claim_dict, "", issues)
     return issues
 
 
 def validate_active_relation_view(rel_dict: dict[str, Any]) -> list[SupportValidationIssue]:
     issues: list[SupportValidationIssue] = []
+    if not str(rel_dict.get("relation_id", "")).strip():
+        issues.append(SupportValidationIssue("MISSING_RELATION_ID", "relation_id is required", "relation_id"))
     profile_id = str(rel_dict.get("support_profile_id", "")).strip()
     if not profile_id:
         issues.append(SupportValidationIssue("MISSING_SUPPORT_PROFILE", "support_profile_id is required", "support_profile_id"))
     elif profile_id not in KNOWN_PROFILES:
         issues.append(SupportValidationIssue("INVALID_SUPPORT_PROFILE", f"unknown profile: {profile_id}", "support_profile_id"))
+    _check_nan_inf_dict(rel_dict, "", issues)
     return issues
 
 

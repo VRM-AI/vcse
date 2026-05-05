@@ -759,10 +759,34 @@ def run_support_evaluate(
     from vcse.support.model import ActiveRelationView, CandidateClaimView, SourceSpan
     from vcse.support.serialize import source_support_decision_to_dict
     from vcse.support.service import evaluate_source_support
+    from vcse.support.validate import (
+        validate_active_relation_view,
+        validate_candidate_claim_view,
+        validate_source_span,
+    )
 
     claim_data = json.loads(claim_file.read_text(encoding="utf-8"))
     spans_data = json.loads(spans_file.read_text(encoding="utf-8"))
     relations_data = json.loads(relations_file.read_text(encoding="utf-8"))
+
+    claim_issues = validate_candidate_claim_view(claim_data)
+    if claim_issues:
+        codes = ", ".join(issue.code for issue in claim_issues)
+        raise ValueError(f"INVALID_SUPPORT_INPUT: claim validation failed ({codes})")
+
+    raw_spans = spans_data if isinstance(spans_data, list) else spans_data.get("spans", [])
+    for idx, span_dict in enumerate(raw_spans):
+        span_issues = validate_source_span(span_dict)
+        if span_issues:
+            codes = ", ".join(issue.code for issue in span_issues)
+            raise ValueError(f"INVALID_SUPPORT_INPUT: source_spans[{idx}] validation failed ({codes})")
+
+    raw_relations = relations_data if isinstance(relations_data, list) else relations_data.get("relations", [])
+    for idx, rel_dict in enumerate(raw_relations):
+        rel_issues = validate_active_relation_view(rel_dict)
+        if rel_issues:
+            codes = ", ".join(issue.code for issue in rel_issues)
+            raise ValueError(f"INVALID_SUPPORT_INPUT: active_relations[{idx}] validation failed ({codes})")
 
     claim = CandidateClaimView(
         claim_id=str(claim_data.get("claim_id", "")),
@@ -774,7 +798,7 @@ def run_support_evaluate(
     )
 
     spans: dict[str, SourceSpan] = {}
-    for s in spans_data if isinstance(spans_data, list) else spans_data.get("spans", []):
+    for s in raw_spans:
         span = SourceSpan(
             source_id=str(s.get("source_id", "")),
             source_span_id=str(s.get("source_span_id", "")),
@@ -789,7 +813,7 @@ def run_support_evaluate(
         spans[span.source_span_id] = span
 
     relations: dict[str, ActiveRelationView] = {}
-    for r in relations_data if isinstance(relations_data, list) else relations_data.get("relations", []):
+    for r in raw_relations:
         rel = ActiveRelationView(
             relation_id=str(r.get("relation_id", "")),
             support_profile_id=str(r.get("support_profile_id", "")),

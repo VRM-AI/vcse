@@ -30,6 +30,11 @@ from vcse.support import (
     source_support_decision_to_dict,
     source_support_decision_to_json,
 )
+from vcse.support.validate import (
+    validate_active_relation_view,
+    validate_candidate_claim_view,
+    validate_source_span,
+)
 
 
 # --- Fixtures ---
@@ -401,3 +406,91 @@ def test_cli_support_evaluate_not_api_wrapped(tmp_path: Path) -> None:
     assert "version" not in parsed
     assert "request_id" not in parsed
     assert "errors" not in parsed
+
+
+def test_validate_source_span_rejects_missing_text() -> None:
+    issues = validate_source_span({"source_id": "s1", "source_span_id": "span-1"})
+    codes = {i.code for i in issues}
+    assert "MISSING_SOURCE_TEXT" in codes
+
+
+def test_validate_source_span_rejects_non_string_text() -> None:
+    issues = validate_source_span({"source_id": "s1", "source_span_id": "span-1", "text": 42})
+    codes = {i.code for i in issues}
+    assert "INVALID_SOURCE_TEXT" in codes
+
+
+def test_validate_candidate_claim_view_rejects_missing_subject() -> None:
+    issues = validate_candidate_claim_view({"claim_id": "c1", "relation": "r", "object": "B"})
+    codes = {i.code for i in issues}
+    assert "MISSING_CLAIM_SUBJECT" in codes
+
+
+def test_validate_candidate_claim_view_rejects_missing_object() -> None:
+    issues = validate_candidate_claim_view({"claim_id": "c1", "subject": "A", "relation": "r"})
+    codes = {i.code for i in issues}
+    assert "MISSING_CLAIM_OBJECT" in codes
+
+
+def test_validate_candidate_claim_view_rejects_missing_relation() -> None:
+    issues = validate_candidate_claim_view({"claim_id": "c1", "subject": "A", "object": "B"})
+    codes = {i.code for i in issues}
+    assert "MISSING_CLAIM_RELATION" in codes
+
+
+def test_validate_active_relation_view_rejects_missing_relation_id() -> None:
+    issues = validate_active_relation_view({"support_profile_id": "SUPPORT_EXACT"})
+    codes = {i.code for i in issues}
+    assert "MISSING_RELATION_ID" in codes
+
+
+def test_validate_active_relation_view_rejects_missing_support_profile_id() -> None:
+    issues = validate_active_relation_view({"relation_id": "knows"})
+    codes = {i.code for i in issues}
+    assert "MISSING_SUPPORT_PROFILE" in codes
+
+
+def test_validate_active_relation_view_rejects_invalid_support_profile_id() -> None:
+    issues = validate_active_relation_view({"relation_id": "knows", "support_profile_id": "BAD_PROFILE"})
+    codes = {i.code for i in issues}
+    assert "INVALID_SUPPORT_PROFILE" in codes
+
+
+def test_validation_issue_codes_are_upper_snake_case() -> None:
+    issues = []
+    issues.extend(validate_source_span({}))
+    issues.extend(validate_candidate_claim_view({}))
+    issues.extend(validate_active_relation_view({}))
+    assert issues
+    for issue in issues:
+        assert issue.code == issue.code.upper()
+
+
+def test_cli_support_evaluate_rejects_malformed_semantic_input(tmp_path: Path) -> None:
+    from vcse.cli import run_support_evaluate
+
+    claim_file = tmp_path / "claim_bad.json"
+    spans_file = tmp_path / "spans_bad.json"
+    relations_file = tmp_path / "relations_bad.json"
+
+    claim_file.write_text(json.dumps({
+        "claim_id": "cli-bad-1",
+        "subject": "",
+        "relation": "knows",
+        "object": "Bob",
+        "source_span_ids": ["span-cli-1"],
+    }), encoding="utf-8")
+
+    spans_file.write_text(json.dumps([{
+        "source_id": "src-cli",
+        "source_span_id": "span-cli-1",
+        "text": "Alice knows Bob",
+    }]), encoding="utf-8")
+
+    relations_file.write_text(json.dumps([{
+        "relation_id": "knows",
+        "support_profile_id": "SUPPORT_EXACT",
+    }]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="INVALID_SUPPORT_INPUT"):
+        run_support_evaluate(claim_file, spans_file, relations_file, json_output=True)
