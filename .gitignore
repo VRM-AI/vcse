@@ -59,3 +59,5 @@ examples/packs/compiled_*/
 
 # Internal engineering test tools (INTERNAL USE ONLY)
 tools/_internal/
+superpowers
+BRANDING.md

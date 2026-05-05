@@ -196,7 +196,6 @@ External systems may submit candidates only. VCSE owns canonicalization, verific
 ### Next
 
 - v6.15.0   Ledger Event Taxonomy
-- v6.15.0   Ledger Event Taxonomy
 - v6.16.0   Renderer Guard + Answer Verification
 - v6.17.0   Repair Contract Foundation
 - v6.18.0   Integration Adapter Contracts
