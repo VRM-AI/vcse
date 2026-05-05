@@ -2790,6 +2790,26 @@ def run_ledger_export(target: Path, output: Path, json_output: bool = False) -> 
     return "\n".join(["status: LEDGER_EXPORTED", f"output: {exported}"])
 
 
+def run_ledger_taxonomy_validate(event_path: Path, json_output: bool = False) -> str:
+    from vcse.ledger.validate import validate_ledger_event_dict
+    from vcse.ledger.serialize import ledger_event_validation_result_to_dict
+    raw = json.loads(event_path.read_text(encoding="utf-8"))
+    result = validate_ledger_event_dict(raw)
+    if json_output:
+        return json.dumps(ledger_event_validation_result_to_dict(result), sort_keys=True)
+    lines = [
+        f"ledger_event_status: {result.status}",
+        f"valid: {result.valid}",
+        f"event_type: {result.event_type}",
+        f"issue_count: {result.issue_count}",
+    ]
+    if result.issues:
+        lines.append("issues:")
+        for issue in result.issues:
+            lines.append(f"  - {issue}")
+    return "\n".join(lines)
+
+
 def _merge_runtime_bundle(primary, secondary):
     if primary is None:
         return secondary
@@ -5182,6 +5202,9 @@ def main(argv: list[str] | None = None) -> None:
     ledger_export_parser.add_argument("target")
     ledger_export_parser.add_argument("--output", required=True, type=Path)
     ledger_export_parser.add_argument("--json", action="store_true", dest="json_output")
+    ledger_validate_parser = ledger_subparsers.add_parser("validate")
+    ledger_validate_parser.add_argument("--event", required=True, type=Path, dest="event_path")
+    ledger_validate_parser.add_argument("--json", action="store_true", dest="json_output")
 
     compress_parser = subparsers.add_parser("compress")
     compress_subparsers = compress_parser.add_subparsers(dest="compress_command")
@@ -5876,6 +5899,9 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if args.ledger_command == "export":
                 print(run_ledger_export(Path(args.target), args.output, json_output=args.json_output))
+                return
+            if args.ledger_command == "validate":
+                print(run_ledger_taxonomy_validate(args.event_path, json_output=args.json_output))
                 return
         if args.command == "compress":
             if args.compress_command == "pack":
