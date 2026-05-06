@@ -57,7 +57,13 @@ benchmarks/compiled_*.jsonl
 # compiled example packs
 examples/packs/compiled_*/
 
+# Local-only operator/project materials
+superpowers/
+**/superpowers/
+BRANDING.md
+branding.md
+**/BRANDING.md
+**/branding.md
+
 # Internal engineering test tools (INTERNAL USE ONLY)
 tools/_internal/
-superpowers
-BRANDING.md
