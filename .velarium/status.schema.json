@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VCSE Status",
+  "type": "object",
+  "required": [
+    "schema_version", "project_id", "project_name", "organization", "repo",
+    "current_version", "latest_release_tag", "latest_release_url",
+    "latest_validated_release", "validation", "capabilities", "roadmap",
+    "immediate_focus", "sync", "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "project_id": { "type": "string" },
+    "project_name": { "type": "string" },
+    "project_full_name": { "type": "string" },
+    "organization": { "type": "string" },
+    "repo": { "type": "string" },
+    "default_branch": { "type": "string" },
+    "public_url": { "type": "string", "format": "uri" },
+    "current_version": { "type": "string" },
+    "latest_release_tag": { "type": "string" },
+    "latest_release_url": { "type": "string", "format": "uri" },
+    "latest_validated_release": {
+      "type": "object",
+      "required": ["version", "tag", "title", "release_url"],
+      "properties": {
+        "version": { "type": "string" },
+        "tag": { "type": "string" },
+        "title": { "type": "string" },
+        "release_url": { "type": "string", "format": "uri" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "pytest": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "passed": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "warnings": { "type": "integer" }
+          }
+        },
+        "gauntlet": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "string" },
+            "total": { "type": "integer" },
+            "passed": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "false_verified_count": { "type": "integer" }
+          }
+        },
+        "git_status_at_release": { "type": "string" }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "title", "status"],
+        "properties": {
+          "version": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["COMPLETE", "IN_PROGRESS", "PLANNED"] }
+        }
+      }
+    },
+    "roadmap": {
+      "type": "object",
+      "properties": {
+        "completed_through": { "type": "string" },
+        "next": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["version", "title", "summary"],
+            "properties": {
+              "version": { "type": "string" },
+              "title": { "type": "string" },
+              "summary": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "immediate_focus": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" }
+      }
+    },
+    "sync": { "type": "object" },
+    "updated_at": { "type": "string" }
+  }
+}
