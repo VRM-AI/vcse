@@ -57,6 +57,25 @@ benchmarks/compiled_*.jsonl
 # compiled example packs
 examples/packs/compiled_*/
 
+# Local-only agent manifests and operating contracts
+# These files are intentionally not tracked or uploaded.
+AGENTS.md
+AGENT.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+GEMINI.local.md
+MINIMAX.md
+M2.7.md
+AGENT_CERTIFICATION.md
+AGENT_OPERATING_CONTRACT.md
+.agent/
+.agents/
+.claude-local/
+.codex-local/
+.gemini-local/
+.minimax-local/
+
 # Local-only operator/project materials
 superpowers/
 **/superpowers/
