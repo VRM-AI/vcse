@@ -8,7 +8,7 @@
   "default_branch": "main",
   "public_url": "https://github.com/VRM-AI/vcse",
 
-  "current_version": "6.15.0",
+  "current_version": "6.16.0",
   "latest_release_tag": "v6.15.0",
   "latest_release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.15.0",
 
@@ -126,17 +126,17 @@
       "version": "6.15.0",
       "title": "ledger event taxonomy",
       "status": "COMPLETE"
+    },
+    {
+      "version": "6.16.0",
+      "title": "renderer guard + answer verification",
+      "status": "COMPLETE"
     }
   ],
 
   "roadmap": {
-    "completed_through": "6.15.0",
+    "completed_through": "6.16.0",
     "next": [
-      {
-        "version": "6.16.0",
-        "title": "Renderer Guard + Answer Verification",
-        "summary": "Prevent rendered/user-facing answers from exceeding validated material."
-      },
       {
         "version": "6.17.0",
         "title": "Repair Contract Foundation",
@@ -171,9 +171,9 @@
   },
 
   "immediate_focus": {
-    "version": "6.16.0",
-    "title": "Renderer Guard + Answer Verification",
-    "summary": "Prevent rendered/user-facing answers from exceeding validated material."
+    "version": "6.17.0",
+    "title": "Repair Contract Foundation",
+    "summary": "Represent failed VCSE outcomes as safe, non-authoritative repair requests."
   },
 
   "sync": {
@@ -182,5 +182,5 @@
     "metrics_source": "latest_validated_release_report"
   },
 
-  "updated_at": "2026-05-06T20:50:08Z"
+  "updated_at": "2026-05-06T21:00:00Z"
 }
