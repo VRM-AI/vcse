@@ -320,3 +320,21 @@ Core invariants:
 - `details` may not contain authority override keys (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`, `verified`, `certified`, `source_supported`).
 - v6.15 does not implement automatic persistence (no required JSONL writes), Renderer Guard, Repair Contracts, or Integration Adapter Contracts.
 - API `POST /ledger/validate` and CLI `vcse ledger validate` are available in v6.15.
+
+### Renderer Guard Package (`vcse.render`) — v6.16.0
+
+Deterministic guard preventing rendered/user-facing answers from exceeding validated claim material.
+
+- `model`: machine constants (final statuses `RENDER_VALID`, `RENDER_INVALID`, `RENDER_NEEDS_CLAIM_MAP`, `RENDER_EXCEEDS_VALIDATED_MATERIAL`, `RENDER_POLICY_BLOCKED`; reason codes; render mode constants `CANONICAL_ONLY`, `NORMALIZED_CANONICAL`, `EXPLICIT_ALLOWED_RENDERING`) and frozen dataclasses (`AnswerDraft`, `AnswerClaimRef`, `ValidatedClaimView`, `RendererGuardDecision`, `RendererGuardPolicy`).
+- `validate`: `_check_nan_inf()` for input validation, `normalize_rendered_text()` for `NORMALIZED_CANONICAL` mode (NFC + whitespace collapse).
+- `service`: `verify_rendered_answer()` — pure, deterministic, non-mutating. Fails closed on missing/invalid input, unknown claim ids, disallowed claim statuses, non-canonical rendered text, and unsupported segments. No filesystem, network, verifier, trust, proof, certification, or source-support calls.
+- `serialize`: `renderer_guard_decision_to_dict()`, `renderer_guard_decision_to_json()` — deterministic, `sort_keys=True`, `allow_nan=False`, tuples serialized as lists.
+
+Core invariants:
+- Renderer guard validates structured answers against explicit `ValidatedClaimView` inputs. It does not parse arbitrary prose with an LLM.
+- Renderer guard does not assign or promote `SOURCE_SUPPORTED`, `VERIFIED`, or `CERTIFIED`.
+- Renderer guard does not create truth. Website display and renderer output do not create VCSE truth.
+- Upstream renderers/extractors must supply `unsupported_segments` explicitly. VCSE does not infer unsupported text.
+- Default allowed claim statuses: `VERIFIED`, `CERTIFIED`. `SOURCE_SUPPORTED` rejected by default; may be allowed only by explicit `RendererGuardPolicy`.
+- `SOURCE_SUPPORTED` allowed by policy remains `SOURCE_SUPPORTED`; it does not become `VERIFIED` or `CERTIFIED`.
+- API `POST /render/verify` and CLI `vcse render verify --answer <file> --claims <file> --json`.

@@ -619,3 +619,103 @@ Validates a ledger event against the Ledger Event Taxonomy. Records are typed, d
 - `details` may not contain authority override keys (`verification_status`, `certification_status`, `trust_tier`, `authoritative_support_profile_id`, `verified`, `certified`, `source_supported`).
 - `details` may not contain NaN or Inf values.
 - This endpoint has no side effects — it does not persist, verify, promote, or certify anything.
+
+## Renderer Guard + Answer Verification (v6.16.0)
+
+`POST /render/verify`
+
+Deterministically validates a structured answer draft against caller-supplied validated claim views. Does not parse arbitrary prose with an LLM. Does not assign `SOURCE_SUPPORTED`, `VERIFIED`, or `CERTIFIED`. Prevents rendered claims from exceeding supplied validated claim material.
+
+### Request
+
+```json
+{
+  "answer": {
+    "answer_id": "a-001",
+    "render_mode": "CANONICAL_ONLY",
+    "rendered_text": "Alice knows Bob.",
+    "claim_refs": [
+      {
+        "claim_id": "c-001",
+        "rendered_text": "Alice knows Bob.",
+        "role": "primary"
+      }
+    ],
+    "unsupported_segments": []
+  },
+  "claims": [
+    {
+      "claim_id": "c-001",
+      "subject": "Alice",
+      "relation": "knows",
+      "object": "Bob",
+      "canonical_text": "Alice knows Bob.",
+      "final_status": "VERIFIED"
+    }
+  ]
+}
+```
+
+### Render modes
+
+- `CANONICAL_ONLY`: `rendered_text` must exactly equal `canonical_text`.
+- `NORMALIZED_CANONICAL`: `rendered_text` matches `canonical_text` after NFC + whitespace collapse.
+- `EXPLICIT_ALLOWED_RENDERING`: `rendered_text` must equal `canonical_text` or one of `allowed_renderings`.
+
+Open-ended paraphrase, semantic similarity, and LLM judgment are not permitted in any mode.
+
+### Response — valid
+
+```json
+{
+  "status": "OK",
+  "version": "6.16.0",
+  "request_id": "...",
+  "data": {
+    "decision": {
+      "answer_id": "a-001",
+      "final_status": "RENDER_VALID",
+      "valid": true,
+      "reason_code": "RENDER_GUARD_PASSED",
+      "issues": [],
+      "claim_count": 1,
+      "accepted_claim_ids": ["c-001"],
+      "rejected_claim_ids": [],
+      "render_mode": "CANONICAL_ONLY"
+    }
+  },
+  "errors": []
+}
+```
+
+### Response — invalid (unsupported segment)
+
+```json
+{
+  "status": "OK",
+  "version": "6.16.0",
+  "request_id": "...",
+  "data": {
+    "decision": {
+      "answer_id": "a-001",
+      "final_status": "RENDER_EXCEEDS_VALIDATED_MATERIAL",
+      "valid": false,
+      "reason_code": "UNSUPPORTED_SEGMENT_PRESENT",
+      "issues": ["unsupported_segment: And some extra claim."],
+      "claim_count": 1,
+      "accepted_claim_ids": [],
+      "rejected_claim_ids": ["c-001"],
+      "render_mode": "CANONICAL_ONLY"
+    }
+  },
+  "errors": []
+}
+```
+
+### Renderer Guard Contract
+
+- The guard validates structured answers against explicit validated claim views. It does not infer factual claims from free text.
+- Unsupported segments must be identified by upstream callers. VCSE does not infer them.
+- Default allowed claim statuses: `VERIFIED`, `CERTIFIED`. `SOURCE_SUPPORTED` is rejected by default.
+- The guard never creates, promotes, or assigns `SOURCE_SUPPORTED`, `VERIFIED`, or `CERTIFIED`.
+- No side effects — no persistence, verification, promotion, or certification.

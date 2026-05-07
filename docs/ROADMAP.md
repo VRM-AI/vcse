@@ -208,9 +208,24 @@ Typed, deterministic outcome records for important VCSE events.
 - 74 contract tests.
 - Deferred: Renderer Guard, Repair Contract Foundation, Integration Adapter Contracts, automatic persistence.
 
+### v6.16.0 — Renderer Guard + Answer Verification
+
+Deterministic guard preventing rendered/user-facing answers from exceeding validated claim material.
+
+- `vcse.render.{model,validate,service,serialize}` — structured answer draft and validated claim view models, deterministic verification service, canonical serialization.
+- `RendererGuardDecision` with `RENDER_VALID`, `RENDER_INVALID`, `RENDER_NEEDS_CLAIM_MAP`, `RENDER_EXCEEDS_VALIDATED_MATERIAL`, `RENDER_POLICY_BLOCKED` statuses.
+- Three render modes: `CANONICAL_ONLY` (exact string equality), `NORMALIZED_CANONICAL` (NFC + whitespace collapse), `EXPLICIT_ALLOWED_RENDERING` (canonical or explicit allowed list).
+- Default allowed claim statuses: `VERIFIED`, `CERTIFIED`. `SOURCE_SUPPORTED` rejected by default.
+- Authority invariants: renderer guard never promotes claims, never assigns `SOURCE_SUPPORTED`/`VERIFIED`/`CERTIFIED`, never calls verifier/trust/proof/certification/source-support.
+- Unsupported segments field: if any segment present, decision is `RENDER_EXCEEDS_VALIDATED_MATERIAL`. Upstream callers must supply this field explicitly; VCSE does not infer it.
+- No LLM calls, embeddings, fuzzy matching, or probabilistic thresholds.
+- `RendererGuardPolicy` supports custom allowed claim statuses for caller-supplied policy (e.g. allowing `SOURCE_SUPPORTED` explicitly).
+- API `POST /render/verify` (unified response contract).
+- CLI `vcse render verify --answer <file> --claims <file> --json`.
+- 42 contract tests.
+
 ### Next
 
-- v6.16.0   Renderer Guard + Answer Verification
 - v6.17.0   Repair Contract Foundation
 - v6.18.0   Integration Adapter Contracts
 - v6.19.0   CLI De-Monolith
