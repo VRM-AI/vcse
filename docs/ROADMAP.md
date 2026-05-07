@@ -226,9 +226,9 @@ Deterministic guard preventing rendered/user-facing answers from exceeding valid
 
 ### Next
 
-- v6.17.0   Repair Contract Foundation
-- v6.18.0   Integration Adapter Contracts
-- v6.19.0   CLI De-Monolith
-- v6.20.0   Property-Based Testing
-- v6.21.0   Mutation Testing Baseline
-- v6.22.0   Formal Spec Skeleton
+- 0.0.617rc1   Repair Contract Foundation
+- 0.0.618rc1   Integration Adapter Contracts
+- 0.0.619rc1   CLI De-Monolith
+- 0.0.620rc1   Property-Based Testing
+- 0.0.621rc1   Mutation Testing Baseline
+- 0.0.622rc1   Formal Spec Skeleton

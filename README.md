@@ -71,6 +71,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Install
 
 ```bash
+pip install vcse
+pip install --pre vcse
+pip install vcse==0.0.616rc1
+```
+
+Or from source:
+
+```bash
 python -m pip install -e .
 ```
 
@@ -113,7 +121,7 @@ vcse query --pack general_world --subject France --relation has_capital --json
 vcse query --packs examples/packs --relation has_capital --object Paris --json
 ```
 
-## Operational API Server (v6.16.0)
+## Operational API Server (v0.0.616rc1)
 
 `vcse serve` starts the local HTTP API server (binds to `127.0.0.1:8000` by default).
 
@@ -131,7 +139,7 @@ Operational endpoints for health, readiness, runtime/proof/bundle validation, st
 - `/ontology/validate` — ontology registry validation (v6.13.0)
 - `/proposal/validate` — candidate proposal contract validation (v6.14.0)
 - `/ledger/validate` — ledger event taxonomy validation (v6.15.0)
-- `/render/verify` — renderer guard + answer verification (v6.16.0)
+- `/render/verify` — renderer guard + answer verification (v0.0.616rc1)
 
 See [docs/API.md](docs/API.md) for response contract and examples.
 
@@ -176,7 +184,7 @@ Key invariants:
 - Events use deterministic UPPER_SNAKE_CASE event types, statuses, and reason codes.
 - v6.15 does not implement automatic persistence, Renderer Guard, or Repair Contracts.
 
-## Renderer Guard + Answer Verification (v6.16.0)
+## Renderer Guard + Answer Verification (v0.0.616rc1)
 
 Deterministic guard preventing rendered/user-facing answers from exceeding validated claim material.
 

@@ -669,7 +669,7 @@ Open-ended paraphrase, semantic similarity, and LLM judgment are not permitted i
 ```json
 {
   "status": "OK",
-  "version": "6.16.0",
+  "version": "0.0.616rc1",
   "request_id": "...",
   "data": {
     "decision": {
@@ -693,7 +693,7 @@ Open-ended paraphrase, semantic similarity, and LLM judgment are not permitted i
 ```json
 {
   "status": "OK",
-  "version": "6.16.0",
+  "version": "0.0.616rc1",
   "request_id": "...",
   "data": {
     "decision": {
