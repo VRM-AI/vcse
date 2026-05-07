@@ -291,10 +291,16 @@ def _validate_conflict_metadata(root: Path, manifest: PackManifest) -> list[str]
 
 
 def _semver_tuple(version: str) -> tuple[int, int, int]:
+    import re
     parts = version.split(".")
     if len(parts) != 3:
         raise PackError("INVALID_VERSION", f"invalid semver: {version}")
-    return int(parts[0]), int(parts[1]), int(parts[2])
+    def _int_part(s: str) -> int:
+        m = re.match(r"^(\d+)", s)
+        if not m:
+            raise PackError("INVALID_VERSION", f"invalid semver: {version}")
+        return int(m.group(1))
+    return _int_part(parts[0]), _int_part(parts[1]), _int_part(parts[2])
 
 
 def _is_legacy_manifest(manifest: PackManifest) -> bool:
