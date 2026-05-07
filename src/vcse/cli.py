@@ -2810,6 +2810,82 @@ def run_ledger_taxonomy_validate(event_path: Path, json_output: bool = False) ->
     return "\n".join(lines)
 
 
+def run_render_verify(answer_path: Path, claims_path: Path, json_output: bool = False) -> str:
+    from vcse.render.model import (
+        AnswerClaimRef, AnswerDraft, RendererGuardPolicy, ValidatedClaimView,
+    )
+    from vcse.render.service import verify_rendered_answer
+    from vcse.render.serialize import renderer_guard_decision_to_dict
+
+    try:
+        answer_raw = json.loads(answer_path.read_text(encoding="utf-8"))
+        claims_raw = json.loads(claims_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        if json_output:
+            return json.dumps({"final_status": "RENDER_INVALID", "valid": False,
+                               "reason_code": "INVALID_RENDER_INPUT", "issues": [str(exc)]}, sort_keys=True)
+        return f"final_status: RENDER_INVALID\nreason_code: INVALID_RENDER_INPUT\nissues:\n  - {exc}"
+
+    try:
+        answer = AnswerDraft(
+            answer_id=str(answer_raw.get("answer_id", "")),
+            render_mode=str(answer_raw.get("render_mode", "")),
+            rendered_text=str(answer_raw.get("rendered_text", "")),
+            claim_refs=tuple(
+                AnswerClaimRef(
+                    claim_id=str(r.get("claim_id", "")),
+                    rendered_text=str(r.get("rendered_text", "")),
+                    role=str(r.get("role", "")),
+                    source_span_ids=tuple(r.get("source_span_ids", [])),
+                    metadata=r.get("metadata", {}),
+                )
+                for r in answer_raw.get("claim_refs", [])
+            ),
+            unsupported_segments=tuple(answer_raw.get("unsupported_segments", [])),
+            metadata=answer_raw.get("metadata", {}),
+        )
+        if not isinstance(claims_raw, list):
+            raise ValueError("claims JSON must be a list")
+        claim_views = {
+            c["claim_id"]: ValidatedClaimView(
+                claim_id=str(c.get("claim_id", "")),
+                subject=str(c.get("subject", "")),
+                relation=str(c.get("relation", "")),
+                object=str(c.get("object", "")),
+                canonical_text=str(c.get("canonical_text", "")),
+                final_status=str(c.get("final_status", "")),
+                source_span_ids=tuple(c.get("source_span_ids", [])),
+                support_profile_id=c.get("support_profile_id"),
+                proof_trace_id=c.get("proof_trace_id"),
+                allowed_renderings=tuple(c.get("allowed_renderings", [])),
+                metadata=c.get("metadata", {}),
+            )
+            for c in claims_raw
+        }
+    except (KeyError, TypeError, ValueError) as exc:
+        if json_output:
+            return json.dumps({"final_status": "RENDER_INVALID", "valid": False,
+                               "reason_code": "INVALID_RENDER_INPUT", "issues": [str(exc)]}, sort_keys=True)
+        return f"final_status: RENDER_INVALID\nreason_code: INVALID_RENDER_INPUT\nissues:\n  - {exc}"
+
+    decision = verify_rendered_answer(answer, claim_views)
+    if json_output:
+        return json.dumps(renderer_guard_decision_to_dict(decision), sort_keys=True)
+    lines = [
+        f"final_status: {decision.final_status}",
+        f"valid: {decision.valid}",
+        f"reason_code: {decision.reason_code}",
+        f"claim_count: {decision.claim_count}",
+        f"accepted: {list(decision.accepted_claim_ids)}",
+        f"rejected: {list(decision.rejected_claim_ids)}",
+    ]
+    if decision.issues:
+        lines.append("issues:")
+        for issue in decision.issues:
+            lines.append(f"  - {issue}")
+    return "\n".join(lines)
+
+
 def _merge_runtime_bundle(primary, secondary):
     if primary is None:
         return secondary
@@ -5206,6 +5282,13 @@ def main(argv: list[str] | None = None) -> None:
     ledger_validate_parser.add_argument("--event", required=True, type=Path, dest="event_path")
     ledger_validate_parser.add_argument("--json", action="store_true", dest="json_output")
 
+    render_parser = subparsers.add_parser("render")
+    render_subparsers = render_parser.add_subparsers(dest="render_command")
+    render_verify_parser = render_subparsers.add_parser("verify")
+    render_verify_parser.add_argument("--answer", required=True, type=Path, dest="answer_path")
+    render_verify_parser.add_argument("--claims", required=True, type=Path, dest="claims_path")
+    render_verify_parser.add_argument("--json", action="store_true", dest="json_output")
+
     compress_parser = subparsers.add_parser("compress")
     compress_subparsers = compress_parser.add_subparsers(dest="compress_command")
     compress_pack_parser = compress_subparsers.add_parser("pack")
@@ -5902,6 +5985,10 @@ def main(argv: list[str] | None = None) -> None:
                 return
             if args.ledger_command == "validate":
                 print(run_ledger_taxonomy_validate(args.event_path, json_output=args.json_output))
+                return
+        if args.command == "render":
+            if args.render_command == "verify":
+                print(run_render_verify(args.answer_path, args.claims_path, json_output=args.json_output))
                 return
         if args.command == "compress":
             if args.compress_command == "pack":

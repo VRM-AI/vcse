@@ -16,6 +16,7 @@ from vcse.api.routes_ontology import router as ontology_router
 from vcse.api.routes_ledger import router as ledger_router
 from vcse.api.routes_proposal import router as proposal_router
 from vcse.api.routes_support import router as support_router
+from vcse.api.routes_render import router as render_router
 from vcse.config import load_settings, Settings
 
 
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ontology_router)
     app.include_router(proposal_router)
     app.include_router(ledger_router)
+    app.include_router(render_router)
     install_error_handlers(
         app,
         max_request_bytes=runtime_settings.api_max_request_bytes,
