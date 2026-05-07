@@ -9,20 +9,20 @@
   "public_url": "https://github.com/VRM-AI/vcse",
 
   "current_version": "6.16.0",
-  "latest_release_tag": "v6.15.0",
-  "latest_release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.15.0",
+  "latest_release_tag": "v6.16.0",
+  "latest_release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.16.0",
 
   "latest_validated_release": {
-    "version": "6.15.0",
-    "tag": "v6.15.0",
-    "title": "Ledger Event Taxonomy",
-    "release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.15.0"
+    "version": "6.16.0",
+    "tag": "v6.16.0",
+    "title": "Renderer Guard + Answer Verification",
+    "release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.16.0"
   },
 
   "validation": {
     "pytest": {
       "status": "PASSED",
-      "passed": 1222,
+      "passed": 1264,
       "failed": 0,
       "warnings": 82
     },
@@ -182,5 +182,5 @@
     "metrics_source": "latest_validated_release_report"
   },
 
-  "updated_at": "2026-05-06T21:00:00Z"
+  "updated_at": "2026-05-07T00:15:00Z"
 }
