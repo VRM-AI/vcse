@@ -73,7 +73,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```bash
 pip install vcse
 pip install --pre vcse
-pip install vcse==0.0.616rc1
+pip install https://github.com/VRM-AI/vcse/releases/download/v0.0.616rc1/vcse-0.0.616rc1-py3-none-any.whl
+```
+
+Or from the release tag source:
+
+```bash
+pip install git+https://github.com/VRM-AI/vcse.git@v0.0.616rc1
 ```
 
 Or from source:

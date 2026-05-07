@@ -15,15 +15,21 @@
   "internal_capability_milestone": "6.16.0",
   "internal_milestone_title": "Renderer Guard + Answer Verification",
 
-  "latest_release_tag": "v6.16.0",
-  "latest_release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.16.0",
+  "latest_release_tag": "v0.0.616rc1",
+  "latest_release_url": "https://github.com/VRM-AI/vcse/releases/tag/v0.0.616rc1",
 
   "latest_validated_release": {
-    "version": "6.16.0",
-    "tag": "v6.16.0",
-    "title": "Renderer Guard + Answer Verification",
-    "release_url": "https://github.com/VRM-AI/vcse/releases/tag/v6.16.0",
+    "version": "0.0.616rc1",
+    "tag": "v0.0.616rc1",
+    "title": "Public rebaseline release for VCSE",
+    "release_url": "https://github.com/VRM-AI/vcse/releases/tag/v0.0.616rc1",
     "intended_public_version": "0.0.616rc1"
+  },
+
+  "distribution": {
+    "channel": "github_release",
+    "status": "COMPLETE",
+    "message": "VCSE v0.0.616rc1 released via GitHub Releases. PyPI publication deferred. Public wheel install verified from GitHub release asset."
   },
 
   "versioning_policy": {
@@ -215,5 +221,5 @@
     "metrics_source": "latest_validated_release_report"
   },
 
-  "updated_at": "2026-05-07T00:30:00Z"
+  "updated_at": "2026-05-07T07:02:15Z"
 }
